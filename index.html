@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sports Data Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Grid.js CSS (lightweight, modern) -->
+    <link rel="stylesheet" href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" />
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- PapaParse for CSV loading -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <!-- Grid.js JS -->
+    <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
+</head>
+<body>
+    <div class="dashboard">
+        <h1>🏈 Sports Data Dashboard</h1>
+        <p>6,000+ rows | 55 columns | Interactive table, grouping, and charts</p>
+
+        <!-- Control Panel: categories + global buttons -->
+        <div class="controls">
+            <div class="global-actions">
+                <button id="groupByPlayerBtn">👥 Group by Player (Sum Stats)</button>
+                <button id="resetDataBtn">🔄 Show Raw Data</button>
+                <button id="exportCsvBtn">📎 Export Visible Table as CSV</button>
+            </div>
+            <div id="categoryPanel" class="category-panel"></div>
+        </div>
+
+        <!-- Chart Section (optional) -->
+        <div class="chart-section">
+            <h3>📊 Grouped Data Chart</h3>
+            <div class="chart-controls">
+                <select id="chartMetricSelect">
+                    <option value="">-- Select a numeric stat to chart --</option>
+                </select>
+                <button id="drawChartBtn">Draw Chart (based on current grouped data)</button>
+            </div>
+            <canvas id="statsChart" width="800" height="400" style="max-width:100%; background:#f9f9f9;"></canvas>
+        </div>
+
+        <!-- Table Container -->
+        <div id="table-container"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

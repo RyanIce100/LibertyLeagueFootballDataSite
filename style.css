@@ -1,0 +1,138 @@
+* {
+    box-sizing: border-box;
+    font-family: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+}
+
+body {
+    background: #f0f2f5;
+    margin: 0;
+    padding: 20px;
+}
+
+.dashboard {
+    max-width: 1400px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    padding: 20px;
+}
+
+h1 {
+    margin-top: 0;
+    color: #1e466e;
+}
+
+.global-actions {
+    margin-bottom: 20px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+button {
+    background: #1e466e;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: 0.2s;
+}
+
+button:hover {
+    background: #0f2c45;
+    transform: translateY(-1px);
+}
+
+.category-panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 30px;
+    background: #f8f9fc;
+    padding: 15px;
+    border-radius: 12px;
+}
+
+.category {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    padding: 10px 12px;
+    min-width: 180px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.category-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.category-header input {
+    margin: 0;
+    transform: scale(1.1);
+}
+
+.toggle-icon {
+    font-size: 12px;
+    background: #eee;
+    padding: 2px 6px;
+    border-radius: 20px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sub-checkboxes {
+    display: none;
+    margin-top: 10px;
+    padding-left: 24px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.sub-checkboxes label {
+    display: block;
+    font-size: 13px;
+    margin: 4px 0;
+}
+
+.chart-section {
+    margin: 20px 0;
+    padding: 15px;
+    background: #fef9e6;
+    border-radius: 12px;
+}
+
+.chart-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+select {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+}
+
+#table-container {
+    margin-top: 20px;
+    overflow-x: auto;
+}
+
+/* Grid.js customisation */
+.gridjs-wrapper {
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.gridjs-th {
+    background: #eef2f7;
+}
