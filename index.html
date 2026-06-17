@@ -17,7 +17,7 @@
 <body>
     <div class="dashboard">
         <h1>🏈 Sports Data Dashboard</h1>
-        <p>6,000+ rows | 55 columns | Filter, sort, group, and chart</p>
+        <p>6,000+ rows | 55 columns | Filter, sort, group, chart, and computed columns</p>
 
         <!-- Global Actions -->
         <div class="global-actions">
@@ -30,7 +30,7 @@
         <!-- Category Column Toggles (collapsible) -->
         <div id="categoryPanel" class="category-panel"></div>
 
-        <!-- ======== ADVANCED FILTER BAR ======== -->
+        <!-- Advanced Filter Bar -->
         <div class="filter-section">
             <h3>🔎 Advanced Filters</h3>
             <div id="filterContainer">
@@ -61,6 +61,18 @@
             <div id="filterStatus" style="margin-top:6px; font-size:14px; color:#555;"></div>
         </div>
 
+        <!-- ========== COMPUTED COLUMN SECTION ========== -->
+        <div class="computed-section">
+            <h3>➕ Add Computed Column</h3>
+            <div class="comp-row">
+                <input id="compName" placeholder="New column name (e.g., YdsPerGame)" />
+                <input id="compFormula" placeholder="Formula (e.g., Rush.Yds / GP)" />
+                <input id="compCondition" placeholder="Condition (optional, e.g., Rush.Att >= 20)" />
+                <button id="addCompColBtn">Add Column</button>
+            </div>
+            <small style="color:#666;">Formula uses column names exactly as in the CSV. Condition is optional – if provided, only rows matching it get a value.</small>
+        </div>
+
         <!-- Chart Section (hidden by default) -->
         <div class="chart-section" id="chartSection" style="display:none;">
             <h3>📊 Grouped Data Chart</h3>
@@ -68,7 +80,7 @@
                 <select id="chartMetricSelect">
                     <option value="">-- Select a numeric stat to chart --</option>
                 </select>
-                <button id="drawChartBtn">Draw Chart (based on current grouped data)</button>
+                <button id="drawChartBtn">Draw Chart (based on current data)</button>
                 <button id="closeChartBtn">Close Chart</button>
             </div>
             <canvas id="statsChart" width="800" height="400" style="max-width:100%; background:#f9f9f9;"></canvas>
@@ -86,7 +98,7 @@
             </label>
         </div>
 
-        <!-- Table Container (horizontally scrollable) -->
+        <!-- Table Wrapper (horizontally scrollable) -->
         <div id="tableWrapper" style="overflow-x: auto;">
             <div id="table-container"></div>
         </div>
