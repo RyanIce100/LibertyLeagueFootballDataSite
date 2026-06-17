@@ -123,7 +123,8 @@ button.danger:hover {
     gap: 8px;
     margin-bottom: 8px;
 }
-.filter-row select, .filter-row input {
+.filter-row select,
+.filter-row input {
     padding: 6px 10px;
     border-radius: 6px;
     border: 1px solid #ccc;
@@ -214,33 +215,45 @@ select {
     border: 1px solid #ccc;
 }
 
-/* Table Wrapper – horizontal scroll */
+/* ================================================ */
+/* TABLE – force narrow, wrapping columns           */
+/* ================================================ */
 #tableWrapper {
-    overflow-x: auto;
+    overflow-x: auto;          /* scroll still available if needed */
     margin-top: 10px;
     border-radius: 12px;
     border: 1px solid #e0e4ea;
 }
+
 #table-container {
-    min-width: max-content;
-    width: 100%;
+    width: 100%;              /* fill the wrapper */
 }
 
-/* Grid.js overrides – auto width, resizable, clean headers */
-.gridjs-wrapper {
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+/* Override Grid.js defaults to make columns compact */
+.gridjs-table {
+    width: 100% !important;
+    table-layout: fixed !important;   /* columns share available width */
+    border-collapse: collapse;
 }
+
+.gridjs-th,
+.gridjs-td {
+    max-width: 120px;         /* each column caps at 120px; wraps if text longer */
+    word-wrap: break-word;
+    white-space: normal;      /* allow wrapping, so no horizontal scroll */
+    padding: 4px 6px;         /* tighter padding */
+    font-size: 12px;
+    line-height: 1.3;
+    overflow: hidden;         /* prevents overflow if word is too long */
+}
+
+/* Keep headers a bit bolder, also wrapping */
 .gridjs-th {
     background: #eef2f7;
-    padding: 8px 12px;
+    font-weight: 600;
+    white-space: normal;
 }
-.gridjs-td {
-    padding: 8px 12px;
-}
-.gridjs-table {
-    table-layout: auto;   /* allows columns to size based on content */
-}
+
 /* Resizable handle styling */
 .gridjs-resizable-handle {
     background: #cbd5e1;
@@ -249,4 +262,14 @@ select {
 }
 .gridjs-resizable-handle:hover {
     background: #1e466e;
+}
+
+/* Search bar and pagination – keep compact */
+.gridjs-search {
+    margin-bottom: 10px;
+}
+.gridjs-search input {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
 }
