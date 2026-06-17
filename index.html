@@ -77,8 +77,17 @@
         <div class="chart-section" id="chartSection" style="display:none;">
             <h3>📊 Grouped Data Chart</h3>
             <div class="chart-controls">
+                <select id="chartTypeSelect">
+                    <option value="bar">Bar Chart</option>
+                    <option value="line">Line Chart</option>
+                    <option value="scatter">Scatter Plot</option>
+                    <option value="radar">Radar Chart</option>
+                </select>
                 <select id="chartMetricSelect">
-                    <option value="">-- Select a numeric stat to chart --</option>
+                    <option value="">-- Y Axis stat --</option>
+                </select>
+                <select id="chartMetricX" style="display:none;">
+                    <option value="">-- X Axis stat --</option>
                 </select>
                 <button id="drawChartBtn">Draw Chart (based on current data)</button>
                 <button id="closeChartBtn">Close Chart</button>

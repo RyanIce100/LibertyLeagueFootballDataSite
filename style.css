@@ -229,29 +229,26 @@ select {
     width: 100%;              /* fill the wrapper */
 }
 
-/* Override Grid.js defaults to make columns compact */
+/* Override Grid.js defaults — auto column widths based on content */
 .gridjs-table {
-    width: 100% !important;
-    table-layout: fixed !important;   /* columns share available width */
+    width: auto !important;         /* shrink-wrap to content */
+    min-width: 100%;                /* but at least fill the wrapper */
+    table-layout: auto !important;  /* browser decides column widths */
     border-collapse: collapse;
 }
 
 .gridjs-th,
 .gridjs-td {
-    max-width: 120px;         /* each column caps at 120px; wraps if text longer */
-    word-wrap: break-word;
-    white-space: normal;      /* allow wrapping, so no horizontal scroll */
-    padding: 4px 6px;         /* tighter padding */
-    font-size: 12px;
-    line-height: 1.3;
-    overflow: hidden;         /* prevents overflow if word is too long */
+    white-space: nowrap;            /* keep each cell on one line */
+    padding: 5px 10px;
+    font-size: 13px;
+    line-height: 1.4;
 }
 
-/* Keep headers a bit bolder, also wrapping */
+/* Keep headers a bit bolder */
 .gridjs-th {
     background: #eef2f7;
     font-weight: 600;
-    white-space: normal;
 }
 
 /* Resizable handle styling */

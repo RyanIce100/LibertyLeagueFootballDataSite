@@ -185,8 +185,8 @@ function renderTable(data, visibleColumns) {
     pagination: pagination,
     fixedHeader: true,
     height: "550px",
-    autoWidth: false,          // <-- CSS handles width now
-    resizable: true,           // stays – users can still drag
+    autoWidth: true,           // size each column to its content
+    resizable: true,           // users can still drag to adjust
     language: {
         search: "🔍 Search all columns:",
         pagination: {
@@ -453,62 +453,154 @@ function toggleChartVisibility() {
 
 function populateMetricSelect() {
     const select = document.getElementById("chartMetricSelect");
+    const selectX = document.getElementById("chartMetricX");
     if (!select) return;
-    select.innerHTML = '<option value="">-- Select a numeric stat --</option>';
+    const emptyY = '<option value="">-- Y Axis stat --</option>';
+    const emptyX = '<option value="">-- X Axis stat (optional label) --</option>';
+    select.innerHTML = emptyY;
+    selectX.innerHTML = emptyX;
     if (!currentData.length) return;
     const sample = currentData[0];
     for (let key in sample) {
         if (typeof sample[key] === "number") {
-            const option = document.createElement("option");
-            option.value = key;
-            option.textContent = key;
-            select.appendChild(option);
+            const optY = document.createElement("option");
+            optY.value = key; optY.textContent = key;
+            select.appendChild(optY);
+            const optX = document.createElement("option");
+            optX.value = key; optX.textContent = key;
+            selectX.appendChild(optX);
         }
     }
 }
 
 function drawChartFromCurrentData() {
-    const select = document.getElementById("chartMetricSelect");
-    const metric = select.value;
-    if (!metric) { alert("Please select a numeric statistic."); return; }
+    const metricY = document.getElementById("chartMetricSelect").value;
+    const metricX = document.getElementById("chartMetricX").value;
+    const chartType = document.getElementById("chartTypeSelect").value;
+    if (!metricY) { alert("Please select a Y Axis stat."); return; }
     if (!currentData.length) { alert("No data available."); return; }
-    const labels = [], values = [];
+
+    // For scatter we need two numeric axes
+    if (chartType === 'scatter' && !metricX) {
+        alert("Scatter plot needs an X Axis stat too. Please select one."); return;
+    }
+
+    const labels = [], valuesY = [], valuesX = [];
     for (let row of currentData) {
-        let val = row[metric];
-        if (typeof val === "number" && !isNaN(val)) {
-            labels.push(row.Player || "Unknown");
-            values.push(val);
+        const y = row[metricY];
+        if (typeof y !== "number" || isNaN(y)) continue;
+        if (chartType === 'scatter') {
+            const x = row[metricX];
+            if (typeof x !== "number" || isNaN(x)) continue;
+            valuesX.push(x);
         }
+        labels.push(row.Player || "Unknown");
+        valuesY.push(y);
     }
     if (labels.length === 0) { alert("No valid numeric data."); return; }
+
+    // Radar: limit to top 10 by Y value to keep it readable
+    let finalLabels = labels, finalY = valuesY, finalX = valuesX;
+    if (chartType === 'radar' && labels.length > 10) {
+        const indexed = valuesY.map((v, i) => ({ v, i })).sort((a, b) => b.v - a.v).slice(0, 10);
+        finalLabels = indexed.map(o => labels[o.i]);
+        finalY = indexed.map(o => o.v);
+    }
+
     document.getElementById('chartSection').style.display = 'block';
     const ctx = document.getElementById("statsChart").getContext("2d");
     if (chartInstance) chartInstance.destroy();
-    chartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: metric,
-                data: values,
-                backgroundColor: 'rgba(30, 70, 110, 0.6)',
-                borderColor: '#1e466e',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: { position: 'top' },
-                tooltip: { callbacks: { label: (ctx) => `${ctx.raw.toLocaleString()}` } }
+
+    const baseColor = 'rgba(30, 70, 110, 0.6)';
+    const borderColor = '#1e466e';
+
+    let config;
+    if (chartType === 'scatter') {
+        const scatterData = valuesY.map((y, i) => ({ x: valuesX[i], y }));
+        config = {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: `${metricX} vs ${metricY}`,
+                    data: scatterData,
+                    backgroundColor: baseColor,
+                    borderColor: borderColor,
+                    pointRadius: 4
+                }]
             },
-            scales: {
-                y: { beginAtZero: true, title: { display: true, text: metric } },
-                x: { ticks: { autoSkip: true, maxTicksLimit: 20 } }
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const idx = ctx.dataIndex;
+                                return `${labels[idx]}: (${ctx.raw.x.toLocaleString()}, ${ctx.raw.y.toLocaleString()})`;
+                            }
+                        }
+                    },
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    x: { title: { display: true, text: metricX } },
+                    y: { beginAtZero: false, title: { display: true, text: metricY } }
+                }
             }
-        }
-    });
+        };
+    } else if (chartType === 'radar') {
+        config = {
+            type: 'radar',
+            data: {
+                labels: finalLabels,
+                datasets: [{
+                    label: metricY,
+                    data: finalY,
+                    backgroundColor: 'rgba(30, 70, 110, 0.25)',
+                    borderColor: borderColor,
+                    borderWidth: 2,
+                    pointBackgroundColor: borderColor
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: { legend: { position: 'top' } },
+                scales: { r: { beginAtZero: true } }
+            }
+        };
+    } else {
+        // bar or line
+        config = {
+            type: chartType,
+            data: {
+                labels: finalLabels,
+                datasets: [{
+                    label: metricY,
+                    data: finalY,
+                    backgroundColor: baseColor,
+                    borderColor: borderColor,
+                    borderWidth: chartType === 'line' ? 2 : 1,
+                    fill: chartType === 'line' ? false : undefined,
+                    tension: chartType === 'line' ? 0.3 : undefined,
+                    pointRadius: chartType === 'line' ? 3 : undefined
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: { callbacks: { label: (ctx) => ctx.raw.toLocaleString() } }
+                },
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: metricY } },
+                    x: { ticks: { autoSkip: true, maxTicksLimit: 30 } }
+                }
+            }
+        };
+    }
+    chartInstance = new Chart(ctx, config);
 }
 
 // --------------------------------------------------------------
@@ -653,6 +745,12 @@ document.addEventListener("DOMContentLoaded", () => {
     // Pagination
     document.getElementById("pageSizeSelect").addEventListener("change", (e) => {
         setPageSize(e.target.value);
+    });
+
+    // Chart type toggle: show X axis selector only for scatter
+    document.getElementById("chartTypeSelect").addEventListener("change", (e) => {
+        const xSel = document.getElementById("chartMetricX");
+        xSel.style.display = e.target.value === 'scatter' ? 'inline-block' : 'none';
     });
 
     // Chart
