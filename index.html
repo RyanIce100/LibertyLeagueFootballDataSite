@@ -1,15 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sports Data Dashboard</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- Grid.js CSS (lightweight, modern) -->
+    <link rel="stylesheet" href="style.css" />
+    <!-- Grid.js CSS -->
     <link rel="stylesheet" href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" />
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <!-- PapaParse for CSV loading -->
+    <!-- PapaParse -->
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <!-- Grid.js JS -->
     <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
@@ -17,32 +17,79 @@
 <body>
     <div class="dashboard">
         <h1>🏈 Sports Data Dashboard</h1>
-        <p>6,000+ rows | 55 columns | Interactive table, grouping, and charts</p>
+        <p>6,000+ rows | 55 columns | Filter, sort, group, and chart</p>
 
-        <!-- Control Panel: categories + global buttons -->
-        <div class="controls">
-            <div class="global-actions">
-                <button id="groupByPlayerBtn">👥 Group by Player (Sum Stats)</button>
-                <button id="resetDataBtn">🔄 Show Raw Data</button>
-                <button id="exportCsvBtn">📎 Export Visible Table as CSV</button>
-            </div>
-            <div id="categoryPanel" class="category-panel"></div>
+        <!-- Global Actions -->
+        <div class="global-actions">
+            <button id="groupByPlayerBtn">👥 Group by Player (Sum Stats)</button>
+            <button id="resetDataBtn">🔄 Show Raw Data</button>
+            <button id="exportCsvBtn">📎 Export Visible Table as CSV</button>
+            <button id="toggleChartBtn">📊 Toggle Chart Panel</button>
         </div>
 
-        <!-- Chart Section (optional) -->
-        <div class="chart-section">
+        <!-- Category Column Toggles (collapsible) -->
+        <div id="categoryPanel" class="category-panel"></div>
+
+        <!-- ======== ADVANCED FILTER BAR ======== -->
+        <div class="filter-section">
+            <h3>🔎 Advanced Filters</h3>
+            <div id="filterContainer">
+                <div class="filter-row">
+                    <select class="filter-column">
+                        <option value="">-- Column --</option>
+                    </select>
+                    <select class="filter-operator">
+                        <option value="=">=</option>
+                        <option value="!=">≠</option>
+                        <option value=">">&gt;</option>
+                        <option value="<">&lt;</option>
+                        <option value=">=">≥</option>
+                        <option value="<=">≤</option>
+                        <option value="contains">contains</option>
+                        <option value="between">between</option>
+                    </select>
+                    <input class="filter-value" type="text" placeholder="Value" />
+                    <input class="filter-value2" type="text" placeholder="Value 2 (for between)" style="display:none;" />
+                    <button class="filter-add-btn">+ Add</button>
+                    <button class="filter-remove-btn" style="display:none;">✕</button>
+                </div>
+            </div>
+            <div class="filter-actions">
+                <button id="applyFiltersBtn">Apply Filters</button>
+                <button id="clearFiltersBtn">Clear All Filters</button>
+            </div>
+            <div id="filterStatus" style="margin-top:6px; font-size:14px; color:#555;"></div>
+        </div>
+
+        <!-- Chart Section (hidden by default) -->
+        <div class="chart-section" id="chartSection" style="display:none;">
             <h3>📊 Grouped Data Chart</h3>
             <div class="chart-controls">
                 <select id="chartMetricSelect">
                     <option value="">-- Select a numeric stat to chart --</option>
                 </select>
                 <button id="drawChartBtn">Draw Chart (based on current grouped data)</button>
+                <button id="closeChartBtn">Close Chart</button>
             </div>
             <canvas id="statsChart" width="800" height="400" style="max-width:100%; background:#f9f9f9;"></canvas>
         </div>
 
-        <!-- Table Container -->
-        <div id="table-container"></div>
+        <!-- Pagination Size Selector -->
+        <div class="pagination-controls">
+            <label>Rows per page: 
+                <select id="pageSizeSelect">
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="-1">All</option>
+                </select>
+            </label>
+        </div>
+
+        <!-- Table Container (horizontally scrollable) -->
+        <div id="tableWrapper" style="overflow-x: auto;">
+            <div id="table-container"></div>
+        </div>
     </div>
 
     <script src="script.js"></script>
