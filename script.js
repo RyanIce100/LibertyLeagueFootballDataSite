@@ -178,28 +178,27 @@ function renderTable(data, visibleColumns) {
     }
 
     tableInstance = new gridjs.Grid({
-        columns: visibleColumns,
-        data: rows,
-        search: true,
-        sort: true,
-        pagination: pagination,
-        fixedHeader: true,
-        height: "550px",
-        autoWidth: true,           // columns size to fit content/header
-        resizable: true,           // mouse‑resizable columns (simple!)
-        language: {
-            search: "🔍 Search all columns:",
-            pagination: {
-                previous: "←",
-                next: "→",
-                showing: "Showing",
-                of: "of",
-                to: "to",
-                results: "results"
-            }
+    columns: visibleColumns,
+    data: rows,
+    search: true,
+    sort: true,
+    pagination: pagination,
+    fixedHeader: true,
+    height: "550px",
+    autoWidth: false,          // <-- CSS handles width now
+    resizable: true,           // stays – users can still drag
+    language: {
+        search: "🔍 Search all columns:",
+        pagination: {
+            previous: "←",
+            next: "→",
+            showing: "Showing",
+            of: "of",
+            to: "to",
+            results: "results"
         }
-    }).render(container);
-}
+    }
+}).render(container);
 
 // --------------------------------------------------------------
 // 6. FILTER LOGIC (unchanged)
