@@ -1,5 +1,5 @@
 // --------------------------------------------------------------
-// 1. CATEGORY MAPPING (all 55 columns)
+// 1. CATEGORY MAPPING (all 55 columns) + Custom category
 // --------------------------------------------------------------
 const categoryMap = {
     "General": ["Player", "Team", "Season", "Yr", "Pos", "GP", "FR"],
@@ -9,23 +9,25 @@ const categoryMap = {
     "Defense": ["Blocks", "FF", "FGs.Blocked", "PBU", "Int", "Sack", "Sack.Yds", "Safeties", "Solo.Tackles", "Asst.Tackles", "TFL", "TFL.Yds"],
     "Kicking": ["KO", "KO.Yds", "KO.TB", "Punts", "Punt.Yds", "Punt.TB", "Punts.I20"],
     "Returns": ["KO.Ret", "Kick.Ret.TD", "KO.Ret.Yds", "Punt.Ret", "Punt.Ret.TD", "Punt.Ret.Yds"],
-    "Field Goals / Distance": ["FGM.18.19", "FGA.18.19", "FGM.20.29", "FGA.20.29", "FGM.30.39", "FGA.30.39", "FGM.40.49", "FGA.40.49", "FGM.50.59", "FGA.50.59"]
+    "Field Goals / Distance": ["FGM.18.19", "FGA.18.19", "FGM.20.29", "FGA.20.29", "FGM.30.39", "FGA.30.39", "FGM.40.49", "FGA.40.49", "FGM.50.59", "FGA.50.59"],
+    "Custom": []  // will hold user‑created columns
 };
 
-const allColumns = Object.values(categoryMap).flat();
+// Build a flat list of all known columns (including custom later)
+let allColumns = Object.values(categoryMap).flat();
 
 // --------------------------------------------------------------
 // 2. GLOBAL STATE
 // --------------------------------------------------------------
 let fullRawData = [];
-let currentData = [];          // data after filters/grouping (to be rendered)
-let filteredData = [];         // data after applying filters (before pagination)
+let currentData = [];          // data after filters/grouping + computed columns
+let filteredData = [];
 let isGrouped = false;
 let groupedData = [];
 let tableInstance = null;
 let chartInstance = null;
-let activeFilters = [];        // array of filter objects
-let currentPageSize = 50;      // default
+let activeFilters = [];
+let currentPageSize = 50;
 
 // --------------------------------------------------------------
 // 3. LOAD CSV
@@ -55,7 +57,7 @@ function loadData() {
 }
 
 // --------------------------------------------------------------
-// 4. BUILD CATEGORY UI (unchanged)
+// 4. BUILD CATEGORY UI – DEFAULT UNCHECKED (except Player)
 // --------------------------------------------------------------
 function buildCategoryUI() {
     const panel = document.getElementById("categoryPanel");
@@ -67,7 +69,8 @@ function buildCategoryUI() {
         header.className = "category-header";
         const catCheck = document.createElement("input");
         catCheck.type = "checkbox";
-        catCheck.checked = true;
+        // Default: unchecked, unless all sub‑checkboxes are checked (which they won't be)
+        catCheck.checked = false;
         catCheck.dataset.category = category;
         catCheck.addEventListener("change", (e) => {
             const subDiv = catDiv.querySelector(".sub-checkboxes");
@@ -97,8 +100,13 @@ function buildCategoryUI() {
             const cb = document.createElement("input");
             cb.type = "checkbox";
             cb.dataset.col = col;
-            cb.checked = true;
-            cb.addEventListener("change", () => refreshTableFromUI());
+            // Only Player is checked by default; all others unchecked
+            cb.checked = (col === "Player");
+            cb.addEventListener("change", () => {
+                refreshTableFromUI();
+                // Update category header checkbox state
+                updateCategoryHeaderState(catDiv, catCheck);
+            });
             label.appendChild(cb);
             label.appendChild(document.createTextNode(` ${col}`));
             subDiv.appendChild(label);
@@ -106,7 +114,15 @@ function buildCategoryUI() {
         catDiv.appendChild(header);
         catDiv.appendChild(subDiv);
         panel.appendChild(catDiv);
+        // Initial sync of category header
+        updateCategoryHeaderState(catDiv, catCheck);
     }
+}
+
+function updateCategoryHeaderState(catDiv, catCheck) {
+    const subBoxes = catDiv.querySelectorAll('.sub-checkboxes input[type="checkbox"]');
+    const checked = Array.from(subBoxes).filter(cb => cb.checked);
+    catCheck.checked = (checked.length === subBoxes.length);
 }
 
 function getSelectedColumns() {
@@ -114,6 +130,7 @@ function getSelectedColumns() {
     document.querySelectorAll('.sub-checkboxes input[type="checkbox"]:checked').forEach(cb => {
         selected.push(cb.dataset.col);
     });
+    // Ensure "Player" is always included (even if unchecked)
     if (!selected.includes("Player") && allColumns.includes("Player")) {
         selected.unshift("Player");
     }
@@ -126,7 +143,7 @@ function refreshTableFromUI() {
 }
 
 // --------------------------------------------------------------
-// 5. RENDER TABLE (with horizontal scroll, pagination size)
+// 5. RENDER TABLE – auto width + resizable columns
 // --------------------------------------------------------------
 function renderTable(data, visibleColumns) {
     const container = document.getElementById("table-container");
@@ -139,8 +156,6 @@ function renderTable(data, visibleColumns) {
         container.innerHTML = "<p>No data available.</p>";
         return;
     }
-
-    // If visibleColumns not provided, get from UI
     if (!visibleColumns) visibleColumns = getSelectedColumns();
 
     // Build rows
@@ -153,7 +168,7 @@ function renderTable(data, visibleColumns) {
         });
     });
 
-    // Determine pagination limit
+    // Pagination limit
     let limit = currentPageSize;
     let pagination = { enabled: true, limit: 25, summary: true };
     if (limit === -1) {
@@ -170,7 +185,8 @@ function renderTable(data, visibleColumns) {
         pagination: pagination,
         fixedHeader: true,
         height: "550px",
-        autoWidth: false,        // prevents auto-shrinking, enables horizontal scroll
+        autoWidth: true,           // columns size to fit content/header
+        resizable: true,           // mouse‑resizable columns (simple!)
         language: {
             search: "🔍 Search all columns:",
             pagination: {
@@ -186,12 +202,11 @@ function renderTable(data, visibleColumns) {
 }
 
 // --------------------------------------------------------------
-// 6. ADVANCED FILTER LOGIC
+// 6. FILTER LOGIC (unchanged)
 // --------------------------------------------------------------
 function populateFilterColumns() {
     const selects = document.querySelectorAll('.filter-column');
     selects.forEach(sel => {
-        // Only populate if empty
         if (sel.options.length > 1) return;
         sel.innerHTML = '<option value="">-- Column --</option>';
         allColumns.forEach(col => {
@@ -203,13 +218,10 @@ function populateFilterColumns() {
     });
 }
 
-// Add a new filter row
 function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
     const container = document.getElementById("filterContainer");
     const row = document.createElement("div");
     row.className = "filter-row";
-
-    // Column select
     const colSelect = document.createElement("select");
     colSelect.className = "filter-column";
     colSelect.innerHTML = '<option value="">-- Column --</option>';
@@ -220,8 +232,6 @@ function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
         colSelect.appendChild(opt);
     });
     colSelect.value = column;
-
-    // Operator select
     const opSelect = document.createElement("select");
     opSelect.className = "filter-operator";
     const ops = ["=", "!=", ">", "<", ">=", "<=", "contains", "between"];
@@ -242,28 +252,21 @@ function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
             val2.value = '';
         }
     });
-
-    // Value 1 input
     const valInput = document.createElement("input");
     valInput.className = "filter-value";
     valInput.type = "text";
     valInput.placeholder = "Value";
     valInput.value = value;
-
-    // Value 2 input (for between)
     const val2Input = document.createElement("input");
     val2Input.className = "filter-value2";
     val2Input.type = "text";
     val2Input.placeholder = "Upper value";
     val2Input.style.display = operator === 'between' ? 'inline-block' : 'none';
     val2Input.value = value2;
-
-    // Add button (only first row gets +, others get remove)
     const addBtn = document.createElement("button");
     addBtn.textContent = "+ Add";
     addBtn.className = "filter-add-btn";
     addBtn.addEventListener('click', () => addFilterRow());
-
     const removeBtn = document.createElement("button");
     removeBtn.textContent = "✕";
     removeBtn.className = "filter-remove-btn";
@@ -276,7 +279,6 @@ function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
             alert("Keep at least one filter row.");
         }
     });
-
     row.appendChild(colSelect);
     row.appendChild(opSelect);
     row.appendChild(valInput);
@@ -284,10 +286,7 @@ function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
     row.appendChild(addBtn);
     row.appendChild(removeBtn);
     container.appendChild(row);
-
-    // Re-populate column dropdowns for new row
     populateFilterColumns();
-    // Apply filter status message
     updateFilterStatus();
 }
 
@@ -315,36 +314,18 @@ function applyFiltersToData(data, filters) {
             const val2 = f.value2;
             let ok = false;
             switch (f.operator) {
-                case '=':
-                    ok = (String(cell).toLowerCase() === String(val).toLowerCase());
-                    break;
-                case '!=':
-                    ok = (String(cell).toLowerCase() !== String(val).toLowerCase());
-                    break;
-                case '>':
-                    ok = (parseFloat(cell) > parseFloat(val));
-                    break;
-                case '<':
-                    ok = (parseFloat(cell) < parseFloat(val));
-                    break;
-                case '>=':
-                    ok = (parseFloat(cell) >= parseFloat(val));
-                    break;
-                case '<=':
-                    ok = (parseFloat(cell) <= parseFloat(val));
-                    break;
-                case 'contains':
-                    ok = String(cell).toLowerCase().includes(String(val).toLowerCase());
-                    break;
+                case '=': ok = (String(cell).toLowerCase() === String(val).toLowerCase()); break;
+                case '!=': ok = (String(cell).toLowerCase() !== String(val).toLowerCase()); break;
+                case '>': ok = (parseFloat(cell) > parseFloat(val)); break;
+                case '<': ok = (parseFloat(cell) < parseFloat(val)); break;
+                case '>=': ok = (parseFloat(cell) >= parseFloat(val)); break;
+                case '<=': ok = (parseFloat(cell) <= parseFloat(val)); break;
+                case 'contains': ok = String(cell).toLowerCase().includes(String(val).toLowerCase()); break;
                 case 'between':
-                    if (val2 !== '') {
-                        ok = (parseFloat(cell) >= parseFloat(val) && parseFloat(cell) <= parseFloat(val2));
-                    } else {
-                        ok = false;
-                    }
+                    if (val2 !== '') ok = (parseFloat(cell) >= parseFloat(val) && parseFloat(cell) <= parseFloat(val2));
+                    else ok = false;
                     break;
-                default:
-                    ok = false;
+                default: ok = false;
             }
             if (!ok) return false;
         }
@@ -360,7 +341,7 @@ function applyFilters() {
     currentData = filteredData;
     renderTable(currentData);
     updateFilterStatus();
-    populateMetricSelect(); // refresh chart dropdown based on filtered data
+    populateMetricSelect();
 }
 
 function clearFilters() {
@@ -386,19 +367,16 @@ function clearFilters() {
 function updateFilterStatus() {
     const status = document.getElementById('filterStatus');
     const count = activeFilters.length;
-    if (count === 0) {
-        status.textContent = `Showing all ${currentData.length} rows.`;
-    } else {
-        status.textContent = `Filtered by ${count} condition(s). Showing ${currentData.length} rows.`;
-    }
+    if (count === 0) status.textContent = `Showing all ${currentData.length} rows.`;
+    else status.textContent = `Filtered by ${count} condition(s). Showing ${currentData.length} rows.`;
 }
 
 // --------------------------------------------------------------
-// 7. GROUPING, RESET, EXPORT (with filter awareness)
+// 7. GROUPING, RESET, EXPORT (unchanged)
 // --------------------------------------------------------------
 function groupByPlayer() {
     if (!fullRawData.length) return;
-    const baseData = fullRawData; // grouping always from raw, filters applied after
+    const baseData = fullRawData;
     const playerMap = new Map();
     baseData.forEach(row => {
         const name = row.Player;
@@ -418,7 +396,6 @@ function groupByPlayer() {
     });
     groupedData = Array.from(playerMap.values());
     isGrouped = true;
-    // Apply existing filters on the grouped data
     filteredData = applyFiltersToData(groupedData, activeFilters);
     currentData = filteredData;
     renderTable(currentData);
@@ -464,19 +441,15 @@ function exportVisibleCSV() {
 // --------------------------------------------------------------
 function setPageSize(size) {
     currentPageSize = parseInt(size);
-    renderTable(currentData); // re-render with new limit
+    renderTable(currentData);
 }
 
 // --------------------------------------------------------------
-// 9. CHART – HIDDEN BY DEFAULT, TOGGLE, AND DRAW
+// 9. CHART (unchanged)
 // --------------------------------------------------------------
 function toggleChartVisibility() {
     const section = document.getElementById('chartSection');
-    if (section.style.display === 'none') {
-        section.style.display = 'block';
-    } else {
-        section.style.display = 'none';
-    }
+    section.style.display = section.style.display === 'none' ? 'block' : 'none';
 }
 
 function populateMetricSelect() {
@@ -498,16 +471,9 @@ function populateMetricSelect() {
 function drawChartFromCurrentData() {
     const select = document.getElementById("chartMetricSelect");
     const metric = select.value;
-    if (!metric) {
-        alert("Please select a numeric statistic from the dropdown.");
-        return;
-    }
-    if (!currentData.length) {
-        alert("No data available to chart.");
-        return;
-    }
-    const labels = [];
-    const values = [];
+    if (!metric) { alert("Please select a numeric statistic."); return; }
+    if (!currentData.length) { alert("No data available."); return; }
+    const labels = [], values = [];
     for (let row of currentData) {
         let val = row[metric];
         if (typeof val === "number" && !isNaN(val)) {
@@ -515,13 +481,8 @@ function drawChartFromCurrentData() {
             values.push(val);
         }
     }
-    if (labels.length === 0) {
-        alert("No valid numeric data for this metric in current view.");
-        return;
-    }
-    // Show chart section if hidden
+    if (labels.length === 0) { alert("No valid numeric data."); return; }
     document.getElementById('chartSection').style.display = 'block';
-
     const ctx = document.getElementById("statsChart").getContext("2d");
     if (chartInstance) chartInstance.destroy();
     chartInstance = new Chart(ctx, {
@@ -552,7 +513,126 @@ function drawChartFromCurrentData() {
 }
 
 // --------------------------------------------------------------
-// 10. INITIALISE EVENTS
+// 10. COMPUTED COLUMN LOGIC (NEW)
+// --------------------------------------------------------------
+function addComputedColumn() {
+    const nameInput = document.getElementById("compName");
+    const formulaInput = document.getElementById("compFormula");
+    const conditionInput = document.getElementById("compCondition");
+    const name = nameInput.value.trim();
+    const formula = formulaInput.value.trim();
+    const condition = conditionInput.value.trim();
+
+    if (!name) { alert("Please enter a column name."); return; }
+    if (!formula) { alert("Please enter a formula (e.g., Rush.Yds / GP)."); return; }
+
+    // Check if column already exists
+    if (allColumns.includes(name)) {
+        alert(`Column "${name}" already exists. Please choose another name.`);
+        return;
+    }
+
+    // Build function from formula
+    let fn;
+    try {
+        fn = new Function('row', `return (${formula});`);
+    } catch (e) {
+        alert(`Invalid formula: ${e.message}`);
+        return;
+    }
+
+    // Build condition function (if provided)
+    let condFn = null;
+    if (condition) {
+        try {
+            condFn = new Function('row', `return (${condition});`);
+        } catch (e) {
+            alert(`Invalid condition: ${e.message}`);
+            return;
+        }
+    }
+
+    // Apply to current data (which already respects filters/grouping)
+    let count = 0;
+    for (let row of currentData) {
+        let shouldCompute = true;
+        if (condFn) {
+            try {
+                shouldCompute = !!condFn(row);
+            } catch (e) {
+                shouldCompute = false;
+            }
+        }
+        if (shouldCompute) {
+            try {
+                let result = fn(row);
+                // Handle divide by zero, NaN, Infinity
+                if (typeof result === 'number' && !isFinite(result)) {
+                    result = null;
+                }
+                row[name] = result;
+                count++;
+            } catch (e) {
+                row[name] = null;
+            }
+        } else {
+            row[name] = null;
+        }
+    }
+
+    // Add column to categoryMap and allColumns
+    if (!categoryMap["Custom"]) {
+        categoryMap["Custom"] = [];
+    }
+    categoryMap["Custom"].push(name);
+    allColumns.push(name);
+
+    // Add checkbox to UI (append to Custom category)
+    const customCatDiv = document.querySelector('.category:has(.category-header span:contains("Custom"))');
+    // Since :contains is not standard, we find it differently
+    let found = false;
+    document.querySelectorAll('.category').forEach(div => {
+        const label = div.querySelector('.category-header span');
+        if (label && label.textContent === "Custom") {
+            // Append new checkbox
+            const subDiv = div.querySelector('.sub-checkboxes');
+            const labelEl = document.createElement("label");
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.dataset.col = name;
+            cb.checked = true;
+            cb.addEventListener("change", () => refreshTableFromUI());
+            labelEl.appendChild(cb);
+            labelEl.appendChild(document.createTextNode(` ${name}`));
+            subDiv.appendChild(labelEl);
+            // Update category header state
+            const catCheck = div.querySelector('.category-header input[type="checkbox"]');
+            updateCategoryHeaderState(div, catCheck);
+            found = true;
+        }
+    });
+
+    if (!found) {
+        // If "Custom" category doesn't exist, rebuild entire UI (fallback)
+        buildCategoryUI();
+    }
+
+    // Update filter column dropdowns
+    populateFilterColumns();
+
+    // Re-render table with new column visible (it's checked)
+    refreshTableFromUI();
+
+    // Clear inputs
+    nameInput.value = "";
+    formulaInput.value = "";
+    conditionInput.value = "";
+
+    alert(`Added column "${name}" for ${count} rows.`);
+}
+
+// --------------------------------------------------------------
+// 11. INITIALISE EVENTS
 // --------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
     loadData();
@@ -569,15 +649,20 @@ document.addEventListener("DOMContentLoaded", () => {
     // Filter actions
     document.getElementById("applyFiltersBtn").addEventListener("click", applyFilters);
     document.getElementById("clearFiltersBtn").addEventListener("click", clearFilters);
-
-    // Add initial filter row
     addFilterRow();
 
-    // Pagination size change
+    // Pagination
     document.getElementById("pageSizeSelect").addEventListener("change", (e) => {
         setPageSize(e.target.value);
     });
 
-    // Draw chart
+    // Chart
     document.getElementById("drawChartBtn").addEventListener("click", drawChartFromCurrentData);
+
+    // Computed Column
+    document.getElementById("addCompColBtn").addEventListener("click", addComputedColumn);
+    // Allow pressing Enter in inputs to trigger add
+    document.getElementById("compName").addEventListener("keydown", (e) => { if (e.key === "Enter") addComputedColumn(); });
+    document.getElementById("compFormula").addEventListener("keydown", (e) => { if (e.key === "Enter") addComputedColumn(); });
+    document.getElementById("compCondition").addEventListener("keydown", (e) => { if (e.key === "Enter") addComputedColumn(); });
 });
