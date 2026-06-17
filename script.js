@@ -94,14 +94,18 @@ function buildCategoryUI() {
         header.appendChild(toggleBtn);
         const subDiv = document.createElement("div");
         subDiv.className = "sub-checkboxes";
-        subDiv.style.display = "none";
+        // Start General expanded so users can see column toggles immediately
+        subDiv.style.display = (category === "General") ? "block" : "none";
+        toggleBtn.textContent = (category === "General") ? "▲" : "▼";
         cols.forEach(col => {
             const label = document.createElement("label");
             const cb = document.createElement("input");
             cb.type = "checkbox";
             cb.dataset.col = col;
             // Only Player is checked by default; all others unchecked
-            cb.checked = (col === "Player");
+            // General category columns checked by default so table has data on load
+            const defaultCols = ["Player", "Team", "Season", "Yr", "Pos", "GP"];
+            cb.checked = defaultCols.includes(col);
             cb.addEventListener("change", () => {
                 refreshTableFromUI();
                 // Update category header checkbox state
@@ -199,9 +203,10 @@ function renderTable(data, visibleColumns) {
         }
     }
 }).render(container);
+} // end renderTable
 
 // --------------------------------------------------------------
-// 6. FILTER LOGIC (unchanged)
+// 6. FILTER LOGIC
 // --------------------------------------------------------------
 function populateFilterColumns() {
     const selects = document.querySelectorAll('.filter-column');
