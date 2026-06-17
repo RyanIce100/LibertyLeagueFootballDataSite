@@ -142,6 +142,39 @@ button.danger:hover {
     margin-top: 10px;
 }
 
+/* Computed Column Section */
+.computed-section {
+    background: #eaf4f5;
+    padding: 15px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    border: 1px solid #c4d8db;
+}
+.computed-section h3 {
+    margin: 0 0 10px 0;
+    font-size: 16px;
+}
+.comp-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+.comp-row input {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    flex: 1 1 150px;
+    min-width: 120px;
+    font-size: 14px;
+}
+.comp-row button {
+    background: #1e7e34;
+}
+.comp-row button:hover {
+    background: #145523;
+}
+
 /* Pagination Controls */
 .pagination-controls {
     margin: 15px 0 10px 0;
@@ -181,7 +214,7 @@ select {
     border: 1px solid #ccc;
 }
 
-/* Table Wrapper – enables horizontal scroll */
+/* Table Wrapper – horizontal scroll */
 #tableWrapper {
     overflow-x: auto;
     margin-top: 10px;
@@ -189,24 +222,31 @@ select {
     border: 1px solid #e0e4ea;
 }
 #table-container {
-    min-width: max-content;   /* ensures columns don't shrink too much */
+    min-width: max-content;
     width: 100%;
 }
 
-/* Grid.js overrides */
+/* Grid.js overrides – auto width, resizable, clean headers */
 .gridjs-wrapper {
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 .gridjs-th {
     background: #eef2f7;
-    white-space: nowrap;      /* prevents header text from wrapping */
-}
-.gridjs-td {
-    white-space: nowrap;      /* keeps cell content on one line -> horizontal scroll */
     padding: 8px 12px;
 }
-/* make the table container take full width of wrapper */
+.gridjs-td {
+    padding: 8px 12px;
+}
 .gridjs-table {
-    width: 100%;
+    table-layout: auto;   /* allows columns to size based on content */
+}
+/* Resizable handle styling */
+.gridjs-resizable-handle {
+    background: #cbd5e1;
+    width: 3px;
+    cursor: col-resize;
+}
+.gridjs-resizable-handle:hover {
+    background: #1e466e;
 }
