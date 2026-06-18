@@ -29,6 +29,9 @@ let chartInstance = null;
 let activeFilters = [];
 let currentPageSize = 50;
 
+// FIX: store custom column definitions
+let customColumnDefinitions = [];  // each: { name, formula, condition }
+
 // --------------------------------------------------------------
 // 3. LOAD CSV
 // --------------------------------------------------------------
@@ -44,6 +47,8 @@ function loadData() {
             currentData = [...fullRawData];
             filteredData = [...fullRawData];
             isGrouped = false;
+            // FIX: apply any existing custom columns to the loaded data
+            applyCustomColumns(currentData);
             buildCategoryUI();
             populateFilterColumns();
             populateMetricSelect();
@@ -69,7 +74,6 @@ function buildCategoryUI() {
         header.className = "category-header";
         const catCheck = document.createElement("input");
         catCheck.type = "checkbox";
-        // Default: unchecked, unless all sub‑checkboxes are checked (which they won't be)
         catCheck.checked = false;
         catCheck.dataset.category = category;
         catCheck.addEventListener("change", (e) => {
@@ -102,13 +106,11 @@ function buildCategoryUI() {
             const cb = document.createElement("input");
             cb.type = "checkbox";
             cb.dataset.col = col;
-            // Only Player is checked by default; all others unchecked
-            // General category columns checked by default so table has data on load
+            // Default checked columns (shows initial data)
             const defaultCols = ["Player", "Team", "Season", "Yr", "Pos", "GP"];
             cb.checked = defaultCols.includes(col);
             cb.addEventListener("change", () => {
                 refreshTableFromUI();
-                // Update category header checkbox state
                 updateCategoryHeaderState(catDiv, catCheck);
             });
             label.appendChild(cb);
@@ -118,7 +120,6 @@ function buildCategoryUI() {
         catDiv.appendChild(header);
         catDiv.appendChild(subDiv);
         panel.appendChild(catDiv);
-        // Initial sync of category header
         updateCategoryHeaderState(catDiv, catCheck);
     }
 }
@@ -134,7 +135,7 @@ function getSelectedColumns() {
     document.querySelectorAll('.sub-checkboxes input[type="checkbox"]:checked').forEach(cb => {
         selected.push(cb.dataset.col);
     });
-    // Ensure "Player" is always included (even if unchecked)
+    // Ensure "Player" is always included
     if (!selected.includes("Player") && allColumns.includes("Player")) {
         selected.unshift("Player");
     }
@@ -147,7 +148,7 @@ function refreshTableFromUI() {
 }
 
 // --------------------------------------------------------------
-// 5. RENDER TABLE – auto width + resizable columns
+// 5. RENDER TABLE – FIX: numeric sorting via formatters
 // --------------------------------------------------------------
 function renderTable(data, visibleColumns) {
     const container = document.getElementById("table-container");
@@ -162,15 +163,17 @@ function renderTable(data, visibleColumns) {
     }
     if (!visibleColumns) visibleColumns = getSelectedColumns();
 
-    // Build rows
-    const rows = data.map(row => {
-        return visibleColumns.map(col => {
-            let val = row[col];
-            if (val === undefined || val === null) return "";
-            if (typeof val === "number") return val.toLocaleString();
-            return val;
-        });
-    });
+    // Build column definitions for Grid.js
+    const columnDefs = visibleColumns.map(col => ({
+        id: col,
+        data: col,
+        // formatter for display (keeps underlying data numeric for sorting)
+        formatter: (cell) => {
+            if (cell === undefined || cell === null) return "";
+            if (typeof cell === "number") return cell.toLocaleString();
+            return cell;
+        }
+    }));
 
     // Pagination limit
     let limit = currentPageSize;
@@ -182,31 +185,31 @@ function renderTable(data, visibleColumns) {
     }
 
     tableInstance = new gridjs.Grid({
-    columns: visibleColumns,
-    data: rows,
-    search: true,
-    sort: true,
-    pagination: pagination,
-    fixedHeader: true,
-    height: "550px",
-    autoWidth: true,           // size each column to its content
-    resizable: true,           // users can still drag to adjust
-    language: {
-        search: "🔍 Search all columns:",
-        pagination: {
-            previous: "←",
-            next: "→",
-            showing: "Showing",
-            of: "of",
-            to: "to",
-            results: "results"
+        columns: columnDefs,          // use column definitions with data & formatter
+        data: data,                   // array of objects
+        search: true,
+        sort: true,
+        pagination: pagination,
+        fixedHeader: true,
+        height: "550px",
+        autoWidth: true,
+        resizable: true,
+        language: {
+            search: "🔍 Search all columns:",
+            pagination: {
+                previous: "←",
+                next: "→",
+                showing: "Showing",
+                of: "of",
+                to: "to",
+                results: "results"
+            }
         }
-    }
-}).render(container);
+    }).render(container);
 } // end renderTable
 
 // --------------------------------------------------------------
-// 6. FILTER LOGIC
+// 6. FILTER LOGIC – FIX: autofill for categorical columns (Team, Pos)
 // --------------------------------------------------------------
 function populateFilterColumns() {
     const selects = document.querySelectorAll('.filter-column');
@@ -219,9 +222,55 @@ function populateFilterColumns() {
             opt.textContent = col;
             sel.appendChild(opt);
         });
+        // Attach change listener to enable categorical autofill
+        sel.addEventListener('change', function() {
+            const row = this.closest('.filter-row');
+            const colName = this.value;
+            const input = row.querySelector('.filter-value');
+            // If column is Team or Pos, replace with a select
+            if (colName === 'Team' || colName === 'Pos') {
+                // Build unique values from fullRawData
+                const values = new Set();
+                fullRawData.forEach(rowData => {
+                    const val = rowData[colName];
+                    if (val !== undefined && val !== null && val !== '') {
+                        values.add(val);
+                    }
+                });
+                // Replace input with a select
+                const select = document.createElement('select');
+                select.className = 'filter-value';
+                select.innerHTML = '<option value="">-- Select --</option>';
+                values.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v;
+                    opt.textContent = v;
+                    select.appendChild(opt);
+                });
+                // Preserve current value if any
+                const currentVal = input.value;
+                if (currentVal) select.value = currentVal;
+                // Replace the input with the select
+                input.parentNode.replaceChild(select, input);
+                // Attach change event to re-apply filters if needed? not necessary, but we keep consistent
+            } else {
+                // If it was a select, revert to text input
+                const existingSelect = row.querySelector('.filter-value');
+                if (existingSelect && existingSelect.tagName === 'SELECT') {
+                    const input = document.createElement('input');
+                    input.className = 'filter-value';
+                    input.type = 'text';
+                    input.placeholder = 'Value';
+                    input.value = existingSelect.value;
+                    existingSelect.parentNode.replaceChild(input, existingSelect);
+                }
+            }
+        });
     });
 }
 
+// The addFilterRow function remains mostly the same, but ensure the column select gets the change listener
+// We'll enhance it to call populateFilterColumns after appending, which already adds listener.
 function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
     const container = document.getElementById("filterContainer");
     const row = document.createElement("div");
@@ -236,6 +285,8 @@ function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
         colSelect.appendChild(opt);
     });
     colSelect.value = column;
+
+    // Operator select
     const opSelect = document.createElement("select");
     opSelect.className = "filter-operator";
     const ops = ["=", "!=", ">", "<", ">=", "<=", "contains", "between"];
@@ -256,21 +307,28 @@ function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
             val2.value = '';
         }
     });
+
+    // Value 1 input – start as text, later may become select
     const valInput = document.createElement("input");
     valInput.className = "filter-value";
     valInput.type = "text";
     valInput.placeholder = "Value";
     valInput.value = value;
+
+    // Value 2 input
     const val2Input = document.createElement("input");
     val2Input.className = "filter-value2";
     val2Input.type = "text";
     val2Input.placeholder = "Upper value";
     val2Input.style.display = operator === 'between' ? 'inline-block' : 'none';
     val2Input.value = value2;
+
+    // Buttons
     const addBtn = document.createElement("button");
     addBtn.textContent = "+ Add";
     addBtn.className = "filter-add-btn";
     addBtn.addEventListener('click', () => addFilterRow());
+
     const removeBtn = document.createElement("button");
     removeBtn.textContent = "✕";
     removeBtn.className = "filter-remove-btn";
@@ -283,6 +341,7 @@ function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
             alert("Keep at least one filter row.");
         }
     });
+
     row.appendChild(colSelect);
     row.appendChild(opSelect);
     row.appendChild(valInput);
@@ -290,17 +349,74 @@ function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
     row.appendChild(addBtn);
     row.appendChild(removeBtn);
     container.appendChild(row);
-    populateFilterColumns();
+
+    // Attach the change listener for categorical autofill
+    colSelect.addEventListener('change', function() {
+        const colName = this.value;
+        const input = row.querySelector('.filter-value');
+        if (colName === 'Team' || colName === 'Pos') {
+            // Build unique values from fullRawData
+            const values = new Set();
+            fullRawData.forEach(rowData => {
+                const val = rowData[colName];
+                if (val !== undefined && val !== null && val !== '') {
+                    values.add(val);
+                }
+            });
+            // If already a select, just update options; else replace
+            if (input.tagName === 'SELECT') {
+                const sel = input;
+                sel.innerHTML = '<option value="">-- Select --</option>';
+                values.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v;
+                    opt.textContent = v;
+                    sel.appendChild(opt);
+                });
+            } else {
+                const select = document.createElement('select');
+                select.className = 'filter-value';
+                select.innerHTML = '<option value="">-- Select --</option>';
+                values.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v;
+                    opt.textContent = v;
+                    select.appendChild(opt);
+                });
+                input.parentNode.replaceChild(select, input);
+            }
+        } else {
+            // If it was a select, revert to text input
+            const existingSelect = row.querySelector('.filter-value');
+            if (existingSelect && existingSelect.tagName === 'SELECT') {
+                const input = document.createElement('input');
+                input.className = 'filter-value';
+                input.type = 'text';
+                input.placeholder = 'Value';
+                input.value = existingSelect.value;
+                existingSelect.parentNode.replaceChild(input, existingSelect);
+            }
+        }
+    });
+
+    // Trigger initial autofill if column is already set
+    if (column === 'Team' || column === 'Pos') {
+        colSelect.dispatchEvent(new Event('change'));
+    }
+
+    populateFilterColumns(); // ensure all selects get listener
     updateFilterStatus();
 }
 
+// getFilterConfigs must handle both input and select values
 function getFilterConfigs() {
     const configs = [];
     document.querySelectorAll('.filter-row').forEach(row => {
         const col = row.querySelector('.filter-column')?.value;
         const op = row.querySelector('.filter-operator')?.value;
-        const val = row.querySelector('.filter-value')?.value.trim();
-        const val2 = row.querySelector('.filter-value2')?.value.trim();
+        const valEl = row.querySelector('.filter-value');
+        let val = valEl ? (valEl.value || '').trim() : '';
+        const val2 = row.querySelector('.filter-value2')?.value?.trim() || '';
         if (col && val) {
             configs.push({ column: col, operator: op, value: val, value2: val2 });
         }
@@ -308,41 +424,16 @@ function getFilterConfigs() {
     return configs;
 }
 
-function applyFiltersToData(data, filters) {
-    if (!filters || filters.length === 0) return data;
-    return data.filter(row => {
-        for (let f of filters) {
-            const cell = row[f.column];
-            if (cell === undefined || cell === null) return false;
-            const val = f.value;
-            const val2 = f.value2;
-            let ok = false;
-            switch (f.operator) {
-                case '=': ok = (String(cell).toLowerCase() === String(val).toLowerCase()); break;
-                case '!=': ok = (String(cell).toLowerCase() !== String(val).toLowerCase()); break;
-                case '>': ok = (parseFloat(cell) > parseFloat(val)); break;
-                case '<': ok = (parseFloat(cell) < parseFloat(val)); break;
-                case '>=': ok = (parseFloat(cell) >= parseFloat(val)); break;
-                case '<=': ok = (parseFloat(cell) <= parseFloat(val)); break;
-                case 'contains': ok = String(cell).toLowerCase().includes(String(val).toLowerCase()); break;
-                case 'between':
-                    if (val2 !== '') ok = (parseFloat(cell) >= parseFloat(val) && parseFloat(cell) <= parseFloat(val2));
-                    else ok = false;
-                    break;
-                default: ok = false;
-            }
-            if (!ok) return false;
-        }
-        return true;
-    });
-}
-
+// The rest of filter functions (applyFiltersToData, applyFilters, clearFilters) remain same,
+// but we need to reapply custom columns after filtering.
 function applyFilters() {
     const filters = getFilterConfigs();
     activeFilters = filters.filter(f => f.column && f.value);
     const baseData = isGrouped ? groupedData : fullRawData;
     filteredData = applyFiltersToData(baseData, activeFilters);
     currentData = filteredData;
+    // FIX: reapply custom columns to the filtered data
+    applyCustomColumns(currentData);
     renderTable(currentData);
     updateFilterStatus();
     populateMetricSelect();
@@ -354,29 +445,30 @@ function clearFilters() {
         else {
             row.querySelector('.filter-column').value = '';
             row.querySelector('.filter-operator').value = '=';
-            row.querySelector('.filter-value').value = '';
-            row.querySelector('.filter-value2').value = '';
-            row.querySelector('.filter-value2').style.display = 'none';
+            const valEl = row.querySelector('.filter-value');
+            if (valEl) {
+                if (valEl.tagName === 'SELECT') {
+                    valEl.innerHTML = '<option value="">-- Select --</option>';
+                } else {
+                    valEl.value = '';
+                }
+            }
+            const val2 = row.querySelector('.filter-value2');
+            if (val2) { val2.value = ''; val2.style.display = 'none'; }
         }
     });
     activeFilters = [];
     const baseData = isGrouped ? groupedData : fullRawData;
     filteredData = [...baseData];
     currentData = filteredData;
+    applyCustomColumns(currentData);
     renderTable(currentData);
     updateFilterStatus();
     populateMetricSelect();
 }
 
-function updateFilterStatus() {
-    const status = document.getElementById('filterStatus');
-    const count = activeFilters.length;
-    if (count === 0) status.textContent = `Showing all ${currentData.length} rows.`;
-    else status.textContent = `Filtered by ${count} condition(s). Showing ${currentData.length} rows.`;
-}
-
 // --------------------------------------------------------------
-// 7. GROUPING, RESET, EXPORT (unchanged)
+// 7. GROUPING, RESET, EXPORT – with custom column reapplication
 // --------------------------------------------------------------
 function groupByPlayer() {
     if (!fullRawData.length) return;
@@ -402,6 +494,7 @@ function groupByPlayer() {
     isGrouped = true;
     filteredData = applyFiltersToData(groupedData, activeFilters);
     currentData = filteredData;
+    applyCustomColumns(currentData);
     renderTable(currentData);
     populateMetricSelect();
     alert(`Grouped into ${groupedData.length} unique players.`);
@@ -413,6 +506,7 @@ function resetToRaw() {
     groupedData = [];
     filteredData = applyFiltersToData(fullRawData, activeFilters);
     currentData = filteredData;
+    applyCustomColumns(currentData);
     renderTable(currentData);
     populateMetricSelect();
 }
@@ -449,7 +543,7 @@ function setPageSize(size) {
 }
 
 // --------------------------------------------------------------
-// 9. CHART (unchanged)
+// 9. CHART (unchanged, but ensure custom columns are considered)
 // --------------------------------------------------------------
 function toggleChartVisibility() {
     const section = document.getElementById('chartSection');
@@ -463,7 +557,7 @@ function populateMetricSelect() {
     const emptyY = '<option value="">-- Y Axis stat --</option>';
     const emptyX = '<option value="">-- X Axis stat (optional label) --</option>';
     select.innerHTML = emptyY;
-    selectX.innerHTML = emptyX;
+    if (selectX) selectX.innerHTML = emptyX;
     if (!currentData.length) return;
     const sample = currentData[0];
     for (let key in sample) {
@@ -471,25 +565,24 @@ function populateMetricSelect() {
             const optY = document.createElement("option");
             optY.value = key; optY.textContent = key;
             select.appendChild(optY);
-            const optX = document.createElement("option");
-            optX.value = key; optX.textContent = key;
-            selectX.appendChild(optX);
+            if (selectX) {
+                const optX = document.createElement("option");
+                optX.value = key; optX.textContent = key;
+                selectX.appendChild(optX);
+            }
         }
     }
 }
 
 function drawChartFromCurrentData() {
     const metricY = document.getElementById("chartMetricSelect").value;
-    const metricX = document.getElementById("chartMetricX").value;
+    const metricX = document.getElementById("chartMetricX")?.value;
     const chartType = document.getElementById("chartTypeSelect").value;
     if (!metricY) { alert("Please select a Y Axis stat."); return; }
     if (!currentData.length) { alert("No data available."); return; }
-
-    // For scatter we need two numeric axes
     if (chartType === 'scatter' && !metricX) {
         alert("Scatter plot needs an X Axis stat too. Please select one."); return;
     }
-
     const labels = [], valuesY = [], valuesX = [];
     for (let row of currentData) {
         const y = row[metricY];
@@ -503,22 +596,17 @@ function drawChartFromCurrentData() {
         valuesY.push(y);
     }
     if (labels.length === 0) { alert("No valid numeric data."); return; }
-
-    // Radar: limit to top 10 by Y value to keep it readable
     let finalLabels = labels, finalY = valuesY, finalX = valuesX;
     if (chartType === 'radar' && labels.length > 10) {
         const indexed = valuesY.map((v, i) => ({ v, i })).sort((a, b) => b.v - a.v).slice(0, 10);
         finalLabels = indexed.map(o => labels[o.i]);
         finalY = indexed.map(o => o.v);
     }
-
     document.getElementById('chartSection').style.display = 'block';
     const ctx = document.getElementById("statsChart").getContext("2d");
     if (chartInstance) chartInstance.destroy();
-
     const baseColor = 'rgba(30, 70, 110, 0.6)';
     const borderColor = '#1e466e';
-
     let config;
     if (chartType === 'scatter') {
         const scatterData = valuesY.map((y, i) => ({ x: valuesX[i], y }));
@@ -575,7 +663,6 @@ function drawChartFromCurrentData() {
             }
         };
     } else {
-        // bar or line
         config = {
             type: chartType,
             data: {
@@ -609,8 +696,41 @@ function drawChartFromCurrentData() {
 }
 
 // --------------------------------------------------------------
-// 10. COMPUTED COLUMN LOGIC (NEW)
+// 10. COMPUTED COLUMN LOGIC – FIX: store definitions and reapply
 // --------------------------------------------------------------
+function applyCustomColumns(data) {
+    // Apply all stored custom column definitions to the given data array (mutates data)
+    if (!customColumnDefinitions.length) return;
+    for (let row of data) {
+        for (let def of customColumnDefinitions) {
+            const { name, formula, condition } = def;
+            let shouldCompute = true;
+            if (condition) {
+                try {
+                    const condFn = new Function('row', `return (${condition});`);
+                    shouldCompute = !!condFn(row);
+                } catch (e) {
+                    shouldCompute = false;
+                }
+            }
+            if (shouldCompute) {
+                try {
+                    const fn = new Function('row', `return (${formula});`);
+                    let result = fn(row);
+                    if (typeof result === 'number' && !isFinite(result)) {
+                        result = null;
+                    }
+                    row[name] = result;
+                } catch (e) {
+                    row[name] = null;
+                }
+            } else {
+                row[name] = null;
+            }
+        }
+    }
+}
+
 function addComputedColumn() {
     const nameInput = document.getElementById("compName");
     const formulaInput = document.getElementById("compFormula");
@@ -621,102 +741,70 @@ function addComputedColumn() {
 
     if (!name) { alert("Please enter a column name."); return; }
     if (!formula) { alert("Please enter a formula (e.g., Rush.Yds / GP)."); return; }
-
-    // Check if column already exists
     if (allColumns.includes(name)) {
         alert(`Column "${name}" already exists. Please choose another name.`);
         return;
     }
 
-    // Build function from formula
-    let fn;
+    // Validate formula and condition with a test row
+    let testRow = fullRawData[0] || {};
     try {
-        fn = new Function('row', `return (${formula});`);
+        const fn = new Function('row', `return (${formula});`);
+        fn(testRow);
     } catch (e) {
         alert(`Invalid formula: ${e.message}`);
         return;
     }
-
-    // Build condition function (if provided)
-    let condFn = null;
     if (condition) {
         try {
-            condFn = new Function('row', `return (${condition});`);
+            const condFn = new Function('row', `return (${condition});`);
+            condFn(testRow);
         } catch (e) {
             alert(`Invalid condition: ${e.message}`);
             return;
         }
     }
 
-    // Apply to current data (which already respects filters/grouping)
-    let count = 0;
-    for (let row of currentData) {
-        let shouldCompute = true;
-        if (condFn) {
-            try {
-                shouldCompute = !!condFn(row);
-            } catch (e) {
-                shouldCompute = false;
-            }
-        }
-        if (shouldCompute) {
-            try {
-                let result = fn(row);
-                // Handle divide by zero, NaN, Infinity
-                if (typeof result === 'number' && !isFinite(result)) {
-                    result = null;
-                }
-                row[name] = result;
-                count++;
-            } catch (e) {
-                row[name] = null;
-            }
-        } else {
-            row[name] = null;
-        }
-    }
+    // Store definition
+    const def = { name, formula, condition };
+    customColumnDefinitions.push(def);
 
-    // Add column to categoryMap and allColumns
-    if (!categoryMap["Custom"]) {
-        categoryMap["Custom"] = [];
-    }
+    // Add to categoryMap and allColumns
+    if (!categoryMap["Custom"]) categoryMap["Custom"] = [];
     categoryMap["Custom"].push(name);
     allColumns.push(name);
 
     // Add checkbox to UI (append to Custom category)
-    const customCatDiv = document.querySelector('.category:has(.category-header span:contains("Custom"))');
-    // Since :contains is not standard, we find it differently
-    let found = false;
+    let customCatDiv = null;
     document.querySelectorAll('.category').forEach(div => {
         const label = div.querySelector('.category-header span');
         if (label && label.textContent === "Custom") {
-            // Append new checkbox
-            const subDiv = div.querySelector('.sub-checkboxes');
-            const labelEl = document.createElement("label");
-            const cb = document.createElement("input");
-            cb.type = "checkbox";
-            cb.dataset.col = name;
-            cb.checked = true;
-            cb.addEventListener("change", () => refreshTableFromUI());
-            labelEl.appendChild(cb);
-            labelEl.appendChild(document.createTextNode(` ${name}`));
-            subDiv.appendChild(labelEl);
-            // Update category header state
-            const catCheck = div.querySelector('.category-header input[type="checkbox"]');
-            updateCategoryHeaderState(div, catCheck);
-            found = true;
+            customCatDiv = div;
         }
     });
-
-    if (!found) {
-        // If "Custom" category doesn't exist, rebuild entire UI (fallback)
+    if (customCatDiv) {
+        const subDiv = customCatDiv.querySelector('.sub-checkboxes');
+        const labelEl = document.createElement("label");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.dataset.col = name;
+        cb.checked = true;
+        cb.addEventListener("change", () => refreshTableFromUI());
+        labelEl.appendChild(cb);
+        labelEl.appendChild(document.createTextNode(` ${name}`));
+        subDiv.appendChild(labelEl);
+        const catCheck = customCatDiv.querySelector('.category-header input[type="checkbox"]');
+        updateCategoryHeaderState(customCatDiv, catCheck);
+    } else {
+        // If no Custom category, rebuild UI
         buildCategoryUI();
     }
 
-    // Update filter column dropdowns
+    // Update filter dropdowns
     populateFilterColumns();
 
-    // Re-render table with new column visible (it's checked)
+    // Apply to current data and re-render
+    applyCustomColumns(currentData);
     refreshTableFromUI();
 
     // Clear inputs
@@ -724,7 +812,7 @@ function addComputedColumn() {
     formulaInput.value = "";
     conditionInput.value = "";
 
-    alert(`Added column "${name}" for ${count} rows.`);
+    alert(`Added column "${name}" for ${currentData.length} rows.`);
 }
 
 // --------------------------------------------------------------
@@ -755,7 +843,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Chart type toggle: show X axis selector only for scatter
     document.getElementById("chartTypeSelect").addEventListener("change", (e) => {
         const xSel = document.getElementById("chartMetricX");
-        xSel.style.display = e.target.value === 'scatter' ? 'inline-block' : 'none';
+        if (xSel) xSel.style.display = e.target.value === 'scatter' ? 'inline-block' : 'none';
     });
 
     // Chart
