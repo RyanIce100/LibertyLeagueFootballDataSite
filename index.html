@@ -9,6 +9,10 @@
     <link rel="stylesheet" href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" />
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Chart.js Annotation Plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <!-- Chart.js DataLabels Plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <!-- PapaParse -->
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <!-- Grid.js JS -->
@@ -33,27 +37,7 @@
         <!-- Advanced Filter Bar -->
         <div class="filter-section">
             <h3>🔎 Advanced Filters</h3>
-            <div id="filterContainer">
-                <div class="filter-row">
-                    <select class="filter-column">
-                        <option value="">-- Column --</option>
-                    </select>
-                    <select class="filter-operator">
-                        <option value="=">=</option>
-                        <option value="!=">≠</option>
-                        <option value=">">&gt;</option>
-                        <option value="<">&lt;</option>
-                        <option value=">=">≥</option>
-                        <option value="<=">≤</option>
-                        <option value="contains">contains</option>
-                        <option value="between">between</option>
-                    </select>
-                    <input class="filter-value" type="text" placeholder="Value" />
-                    <input class="filter-value2" type="text" placeholder="Value 2 (for between)" style="display:none;" />
-                    <button class="filter-add-btn">+ Add</button>
-                    <button class="filter-remove-btn" style="display:none;">✕</button>
-                </div>
-            </div>
+            <div id="filterContainer"></div>
             <div class="filter-actions">
                 <button id="applyFiltersBtn">Apply Filters</button>
                 <button id="clearFiltersBtn">Clear All Filters</button>
@@ -61,7 +45,7 @@
             <div id="filterStatus" style="margin-top:6px; font-size:14px; color:#555;"></div>
         </div>
 
-        <!-- ========== COMPUTED COLUMN SECTION ========== -->
+        <!-- Computed Column Section -->
         <div class="computed-section">
             <h3>➕ Add Computed Column</h3>
             <div class="comp-row">
@@ -70,12 +54,14 @@
                 <input id="compCondition" placeholder="Condition (optional, e.g., Rush.Att >= 20)" />
                 <button id="addCompColBtn">Add Column</button>
             </div>
-            <small style="color:#666;">Formula uses column names exactly as in the CSV. Condition is optional – if provided, only rows matching it get a value.</small>
+            <small style="color:#666;">Formula uses column names exactly as in the CSV. Condition is optional.</small>
         </div>
 
-        <!-- Chart Section (hidden by default) -->
+        <!-- Chart Section -->
         <div class="chart-section" id="chartSection" style="display:none;">
-            <h3>📊 Grouped Data Chart</h3>
+            <h3>📊 Chart</h3>
+
+            <!-- Row 1: Type + axes -->
             <div class="chart-controls">
                 <select id="chartTypeSelect">
                     <option value="bar">Bar Chart</option>
@@ -83,16 +69,56 @@
                     <option value="scatter">Scatter Plot</option>
                     <option value="radar">Radar Chart</option>
                 </select>
-                <select id="chartMetricSelect">
-                    <option value="">-- Y Axis stat --</option>
-                </select>
-                <select id="chartMetricX" style="display:none;">
-                    <option value="">-- X Axis stat --</option>
-                </select>
-                <button id="drawChartBtn">Draw Chart (based on current data)</button>
-                <button id="closeChartBtn">Close Chart</button>
+                <select id="chartMetricSelect"><option value="">-- Y Axis stat --</option></select>
+                <select id="chartMetricX" style="display:none;"><option value="">-- X Axis stat --</option></select>
             </div>
-            <canvas id="statsChart" width="800" height="400" style="max-width:100%; background:#f9f9f9;"></canvas>
+
+            <!-- Row 2: Custom labels -->
+            <div class="chart-controls" style="flex-wrap:wrap; gap:8px; margin-top:8px;">
+                <input id="chartTitleInput"  placeholder="Chart title (optional)" style="flex:1 1 180px; padding:6px 10px; border-radius:6px; border:1px solid #ccc; font-size:14px;" />
+                <input id="chartAxisYInput"  placeholder="Y axis label (optional)" style="flex:1 1 160px; padding:6px 10px; border-radius:6px; border:1px solid #ccc; font-size:14px;" />
+                <input id="chartAxisXInput"  placeholder="X axis label (optional)" style="flex:1 1 160px; padding:6px 10px; border-radius:6px; border:1px solid #ccc; font-size:14px;" />
+            </div>
+
+            <!-- Row 3: Overlays + options -->
+            <div class="chart-controls" style="flex-wrap:wrap; gap:12px; margin-top:10px; align-items:center;">
+                <label class="chart-option-label">
+                    <input type="checkbox" id="colorByTeamCheck" /> Color by Team
+                </label>
+                <label class="chart-option-label">
+                    <input type="checkbox" id="showLogosCheck" disabled title="Upload team logo images to enable" /> Use Team Logos <span style="font-size:11px;color:#888;">(coming soon)</span>
+                </label>
+                <label class="chart-option-label">
+                    <input type="checkbox" id="showPointLabels" /> Point Labels
+                </label>
+                <label class="chart-option-label">
+                    <input type="checkbox" id="showMeanY" /> Mean Y line
+                </label>
+                <label class="chart-option-label" id="meanXLabel">
+                    <input type="checkbox" id="showMeanX" /> Mean X line
+                </label>
+                <label class="chart-option-label" id="linRegLabel">
+                    <input type="checkbox" id="showLinReg" /> Linear Regression
+                </label>
+                <label class="chart-option-label">
+                    Size:
+                    <select id="chartSizeSelect" style="padding:4px 8px; border-radius:6px; border:1px solid #ccc;">
+                        <option value="small">Small</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="large">Large</option>
+                    </select>
+                </label>
+            </div>
+
+            <!-- Row 4: Action buttons -->
+            <div class="chart-controls" style="margin-top:10px;">
+                <button id="drawChartBtn">▶ Draw Chart</button>
+                <button id="closeChartBtn" class="danger">✕ Close</button>
+            </div>
+
+            <div style="position:relative;">
+                <canvas id="statsChart" style="max-width:100%; background:#f9f9f9;"></canvas>
+            </div>
         </div>
 
         <!-- Pagination Size Selector -->
@@ -107,7 +133,7 @@
             </label>
         </div>
 
-        <!-- Table Wrapper (horizontally scrollable) -->
+        <!-- Table Wrapper -->
         <div id="tableWrapper" style="overflow-x: auto;">
             <div id="table-container"></div>
         </div>
