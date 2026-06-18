@@ -10,17 +10,16 @@ const categoryMap = {
     "Kicking": ["KO", "KO.Yds", "KO.TB", "Punts", "Punt.Yds", "Punt.TB", "Punts.I20"],
     "Returns": ["KO.Ret", "Kick.Ret.TD", "KO.Ret.Yds", "Punt.Ret", "Punt.Ret.TD", "Punt.Ret.Yds"],
     "Field Goals / Distance": ["FGM.18.19", "FGA.18.19", "FGM.20.29", "FGA.20.29", "FGM.30.39", "FGA.30.39", "FGM.40.49", "FGA.40.49", "FGM.50.59", "FGA.50.59"],
-    "Custom": []  // will hold user‑created columns
+    "Custom": []
 };
 
-// Build a flat list of all known columns (including custom later)
 let allColumns = Object.values(categoryMap).flat();
 
 // --------------------------------------------------------------
 // 2. GLOBAL STATE
 // --------------------------------------------------------------
 let fullRawData = [];
-let currentData = [];          // data after filters/grouping + computed columns
+let currentData = [];
 let filteredData = [];
 let isGrouped = false;
 let groupedData = [];
@@ -28,9 +27,37 @@ let tableInstance = null;
 let chartInstance = null;
 let activeFilters = [];
 let currentPageSize = 50;
+let uniqueTeams = [];
+let uniquePositions = [];
+// Track sort state per column for consistent cycling
+let sortState = {}; // { colName: 'asc' | 'desc' | 'none' }
 
-// Store custom column definitions so we can reapply them after filter/group
-let customColumnDefinitions = [];
+// Team color palette (Liberty League teams — extend as needed)
+const TEAM_COLORS = {
+    "Bard":        { bg: "rgba(0,56,101,0.7)",   border: "#003865" },
+    "Clarkson":    { bg: "rgba(0,114,198,0.7)",  border: "#0072C6" },
+    "Hobart":      { bg: "rgba(149,0,31,0.7)",   border: "#95001F" },
+    "Ithaca":      { bg: "rgba(0,102,51,0.7)",   border: "#006633" },
+    "RPI":         { bg: "rgba(209,0,24,0.7)",   border: "#D10018" },
+    "Rochester":   { bg: "rgba(253,185,19,0.7)", border: "#FDB913" },
+    "SLU":         { bg: "rgba(0,68,124,0.7)",   border: "#00447C" },
+    "Skidmore":    { bg: "rgba(0,101,65,0.7)",   border: "#006541" },
+    "Union":       { bg: "rgba(129,0,21,0.7)",   border: "#810015" },
+    "Utica":       { bg: "rgba(0,83,155,0.7)",   border: "#00539B" },
+    "DEFAULT":     { bg: "rgba(30,70,110,0.7)",  border: "#1e466e" }
+};
+
+function getTeamColor(teamName) {
+    if (!teamName) return TEAM_COLORS.DEFAULT;
+    // Try exact match first, then partial
+    if (TEAM_COLORS[teamName]) return TEAM_COLORS[teamName];
+    for (const key of Object.keys(TEAM_COLORS)) {
+        if (key !== "DEFAULT" && teamName.toLowerCase().includes(key.toLowerCase())) {
+            return TEAM_COLORS[key];
+        }
+    }
+    return TEAM_COLORS.DEFAULT;
+}
 
 // --------------------------------------------------------------
 // 3. LOAD CSV
@@ -47,7 +74,9 @@ function loadData() {
             currentData = [...fullRawData];
             filteredData = [...fullRawData];
             isGrouped = false;
-            applyCustomColumns(currentData);   // if any custom columns were defined before load (none initially)
+            // Extract unique teams and positions for autocomplete
+            uniqueTeams = [...new Set(fullRawData.map(r => r.Team).filter(Boolean))].sort();
+            uniquePositions = [...new Set(fullRawData.map(r => r.Pos).filter(Boolean))].sort();
             buildCategoryUI();
             populateFilterColumns();
             populateMetricSelect();
@@ -61,7 +90,7 @@ function loadData() {
 }
 
 // --------------------------------------------------------------
-// 4. BUILD CATEGORY UI – DEFAULT UNCHECKED (except Player)
+// 4. BUILD CATEGORY UI – DEFAULT UNCHECKED (except General defaults)
 // --------------------------------------------------------------
 function buildCategoryUI() {
     const panel = document.getElementById("categoryPanel");
@@ -97,7 +126,6 @@ function buildCategoryUI() {
         header.appendChild(toggleBtn);
         const subDiv = document.createElement("div");
         subDiv.className = "sub-checkboxes";
-        // Start General expanded
         subDiv.style.display = (category === "General") ? "block" : "none";
         toggleBtn.textContent = (category === "General") ? "▲" : "▼";
         cols.forEach(col => {
@@ -105,7 +133,6 @@ function buildCategoryUI() {
             const cb = document.createElement("input");
             cb.type = "checkbox";
             cb.dataset.col = col;
-            // Default checked: only a few key columns
             const defaultCols = ["Player", "Team", "Season", "Yr", "Pos", "GP"];
             cb.checked = defaultCols.includes(col);
             cb.addEventListener("change", () => {
@@ -125,8 +152,10 @@ function buildCategoryUI() {
 
 function updateCategoryHeaderState(catDiv, catCheck) {
     const subBoxes = catDiv.querySelectorAll('.sub-checkboxes input[type="checkbox"]');
+    if (subBoxes.length === 0) { catCheck.checked = false; return; }
     const checked = Array.from(subBoxes).filter(cb => cb.checked);
     catCheck.checked = (checked.length === subBoxes.length);
+    catCheck.indeterminate = checked.length > 0 && checked.length < subBoxes.length;
 }
 
 function getSelectedColumns() {
@@ -146,13 +175,15 @@ function refreshTableFromUI() {
 }
 
 // --------------------------------------------------------------
-// 5. RENDER TABLE – array-of-arrays with numeric sorting
+// 5. RENDER TABLE – auto width + resizable columns
+//    FIX: columns prop uses objects with 'name' so Grid.js
+//    actually renders them, and sort is numeric-aware.
 // --------------------------------------------------------------
 function renderTable(data, visibleColumns) {
     const container = document.getElementById("table-container");
     if (!container) return;
     if (tableInstance) {
-        tableInstance.destroy();
+        try { tableInstance.destroy(); } catch(e) {}
         container.innerHTML = "";
     }
     if (!data || data.length === 0) {
@@ -161,44 +192,60 @@ function renderTable(data, visibleColumns) {
     }
     if (!visibleColumns) visibleColumns = getSelectedColumns();
 
-    // Convert data (array of objects) to array of arrays in the correct column order
+    // Build rows as arrays — values stay native (number or string) so sort works
     const rows = data.map(row => {
         return visibleColumns.map(col => {
             let val = row[col];
             if (val === undefined || val === null) return "";
-            return val;   // keep raw value (number or string) for sorting
+            return val;
         });
     });
 
-    // Build column definitions with custom sort functions
-    const columnDefs = visibleColumns.map((col, idx) => ({
-        name: col,
-        sort: {
-            compare: (a, b) => {
-                // a and b are the cell values for this column (from two rows)
-                const numA = parseFloat(a);
-                const numB = parseFloat(b);
-                if (!isNaN(numA) && !isNaN(numB)) {
-                    return numA - numB;   // numeric sort
-                }
-                // fallback to string comparison
-                return String(a).localeCompare(String(b));
-            }
-        }
-    }));
+    // Build column defs with consistent numeric comparator
+    const columnDefs = visibleColumns.map((col, idx) => {
+        // Determine if column is mostly numeric
+        let numericCount = 0;
+        const sample = rows.slice(0, Math.min(50, rows.length));
+        sample.forEach(r => { if (typeof r[idx] === 'number') numericCount++; });
+        const isNumeric = numericCount > sample.length * 0.5;
 
-    // Pagination
-    let limit = currentPageSize;
-    let pagination = { enabled: true, limit: 25, summary: true };
-    if (limit === -1) {
+        return {
+            name: col,
+            sort: {
+                compare: (a, b) => {
+                    // Handle empty strings
+                    const aEmpty = (a === "" || a === null || a === undefined);
+                    const bEmpty = (b === "" || b === null || b === undefined);
+                    if (aEmpty && bEmpty) return 0;
+                    if (aEmpty) return 1;  // empties always last
+                    if (bEmpty) return -1;
+                    if (isNumeric) {
+                        const na = typeof a === 'number' ? a : parseFloat(a);
+                        const nb = typeof b === 'number' ? b : parseFloat(b);
+                        if (!isNaN(na) && !isNaN(nb)) return na - nb;
+                    }
+                    return String(a).localeCompare(String(b));
+                }
+            },
+            // Format numbers for display via formatter
+            formatter: (cell) => {
+                if (cell === "" || cell === null || cell === undefined) return "";
+                if (typeof cell === 'number') return cell.toLocaleString();
+                return cell;
+            }
+        };
+    });
+
+    let pagination;
+    if (currentPageSize === -1) {
         pagination = { enabled: false };
     } else {
-        pagination = { enabled: true, limit: limit, summary: true };
+        pagination = { enabled: true, limit: currentPageSize, summary: true };
     }
 
     tableInstance = new gridjs.Grid({
-        columns: columnDefs,       // with sort functions
-        data: rows,                // array of arrays
+        columns: columnDefs,
+        data: rows,
         search: true,
         sort: true,
         pagination: pagination,
@@ -221,12 +268,12 @@ function renderTable(data, visibleColumns) {
 }
 
 // --------------------------------------------------------------
-// 6. FILTER LOGIC – with autofill for Team/Pos
+// 6. FILTER LOGIC – with autocomplete dropdown for Team/Pos
 // --------------------------------------------------------------
 function populateFilterColumns() {
     const selects = document.querySelectorAll('.filter-column');
     selects.forEach(sel => {
-        if (sel.options.length > 1) return;
+        const current = sel.value;
         sel.innerHTML = '<option value="">-- Column --</option>';
         allColumns.forEach(col => {
             const opt = document.createElement('option');
@@ -234,59 +281,104 @@ function populateFilterColumns() {
             opt.textContent = col;
             sel.appendChild(opt);
         });
-        sel.addEventListener('change', function() {
-            const row = this.closest('.filter-row');
-            const colName = this.value;
-            const input = row.querySelector('.filter-value');
-            if (colName === 'Team' || colName === 'Pos') {
-                // Build unique values
-                const values = new Set();
-                fullRawData.forEach(rowData => {
-                    const val = rowData[colName];
-                    if (val !== undefined && val !== null && val !== '') {
-                        values.add(val);
-                    }
-                });
-                if (input.tagName === 'SELECT') {
-                    const selEl = input;
-                    selEl.innerHTML = '<option value="">-- Select --</option>';
-                    values.forEach(v => {
-                        const opt = document.createElement('option');
-                        opt.value = v;
-                        opt.textContent = v;
-                        selEl.appendChild(opt);
-                    });
-                } else {
-                    const select = document.createElement('select');
-                    select.className = 'filter-value';
-                    select.innerHTML = '<option value="">-- Select --</option>';
-                    values.forEach(v => {
-                        const opt = document.createElement('option');
-                        opt.value = v;
-                        opt.textContent = v;
-                        select.appendChild(opt);
-                    });
-                    input.parentNode.replaceChild(select, input);
-                }
-            } else {
-                const existingSelect = row.querySelector('.filter-value');
-                if (existingSelect && existingSelect.tagName === 'SELECT') {
-                    const input = document.createElement('input');
-                    input.className = 'filter-value';
-                    input.type = 'text';
-                    input.placeholder = 'Value';
-                    input.value = existingSelect.value;
-                    existingSelect.parentNode.replaceChild(input, existingSelect);
-                }
-            }
-        });
+        if (current) sel.value = current;
     });
+}
+
+// Build a datalist element for a given column
+function buildDatalist(col) {
+    const id = `dl_${col.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    let dl = document.getElementById(id);
+    if (dl) return id; // already exists
+    dl = document.createElement('datalist');
+    dl.id = id;
+    let values = [];
+    if (col === 'Team') values = uniqueTeams;
+    else if (col === 'Pos') values = uniquePositions;
+    else {
+        // For other string columns, gather up to 200 unique values
+        const set = new Set();
+        for (const row of fullRawData) {
+            const v = row[col];
+            if (v !== null && v !== undefined && typeof v === 'string') {
+                set.add(v);
+                if (set.size >= 200) break;
+            }
+        }
+        values = [...set].sort();
+    }
+    values.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        dl.appendChild(opt);
+    });
+    document.body.appendChild(dl);
+    return id;
+}
+
+function wireAutocomplete(row) {
+    const colSel = row.querySelector('.filter-column');
+    const valInput = row.querySelector('.filter-value');
+    if (!colSel || !valInput) return;
+
+    colSel.addEventListener('change', () => {
+        const col = colSel.value;
+        // Only offer autocomplete for categorical columns
+        const catCols = ['Team', 'Pos', 'Player', 'Season'];
+        if (catCols.includes(col)) {
+            // For Team / Pos also show checkboxes panel
+            if (col === 'Team' || col === 'Pos') {
+                showCheckboxDropdown(row, col);
+            }
+            const dlId = buildDatalist(col);
+            valInput.setAttribute('list', dlId);
+        } else {
+            valInput.removeAttribute('list');
+            hideCheckboxDropdown(row);
+        }
+    });
+}
+
+function showCheckboxDropdown(filterRow, col) {
+    hideCheckboxDropdown(filterRow); // remove old
+    const values = col === 'Team' ? uniqueTeams : uniquePositions;
+    const wrap = document.createElement('div');
+    wrap.className = 'checkbox-dropdown';
+    wrap.innerHTML = `<div class="cbd-title">Select ${col}(s):</div>`;
+    const list = document.createElement('div');
+    list.className = 'cbd-list';
+    values.forEach(v => {
+        const lbl = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = v;
+        cb.addEventListener('change', () => {
+            const checked = [...wrap.querySelectorAll('input:checked')].map(c => c.value);
+            const valInput = filterRow.querySelector('.filter-value');
+            // Put comma-separated into value field, switch operator to 'in'
+            valInput.value = checked.join(',');
+            const opSel = filterRow.querySelector('.filter-operator');
+            if (checked.length > 1) opSel.value = 'in';
+            else if (checked.length === 1) opSel.value = '=';
+        });
+        lbl.appendChild(cb);
+        lbl.appendChild(document.createTextNode(' ' + v));
+        list.appendChild(lbl);
+    });
+    wrap.appendChild(list);
+    filterRow.appendChild(wrap);
+}
+
+function hideCheckboxDropdown(filterRow) {
+    const existing = filterRow.querySelector('.checkbox-dropdown');
+    if (existing) existing.remove();
 }
 
 function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
     const container = document.getElementById("filterContainer");
     const row = document.createElement("div");
     row.className = "filter-row";
+
     const colSelect = document.createElement("select");
     colSelect.className = "filter-column";
     colSelect.innerHTML = '<option value="">-- Column --</option>';
@@ -300,11 +392,13 @@ function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
 
     const opSelect = document.createElement("select");
     opSelect.className = "filter-operator";
-    const ops = ["=", "!=", ">", "<", ">=", "<=", "contains", "between"];
+    const ops = ["=", "!=", ">", "<", ">=", "<=", "contains", "between", "in"];
     ops.forEach(op => {
         const opt = document.createElement('option');
         opt.value = op;
-        opt.textContent = op;
+        // nicer labels
+        const labels = {"=":"=","!=":"≠",">":">","<":"<",">=":"≥","<=":"≤","contains":"contains","between":"between","in":"in (comma-sep)"};
+        opt.textContent = labels[op] || op;
         opSelect.appendChild(opt);
     });
     opSelect.value = operator;
@@ -345,8 +439,6 @@ function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
     removeBtn.addEventListener('click', () => {
         if (document.querySelectorAll('.filter-row').length > 1) {
             row.remove();
-        } else {
-            alert("Keep at least one filter row.");
         }
     });
 
@@ -358,54 +450,15 @@ function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
     row.appendChild(removeBtn);
     container.appendChild(row);
 
-    // Attach change listener for categorical autofill
-    colSelect.addEventListener('change', function() {
-        const colName = this.value;
-        const input = row.querySelector('.filter-value');
-        if (colName === 'Team' || colName === 'Pos') {
-            const values = new Set();
-            fullRawData.forEach(rowData => {
-                const val = rowData[colName];
-                if (val !== undefined && val !== null && val !== '') {
-                    values.add(val);
-                }
-            });
-            if (input.tagName === 'SELECT') {
-                const sel = input;
-                sel.innerHTML = '<option value="">-- Select --</option>';
-                values.forEach(v => {
-                    const opt = document.createElement('option');
-                    opt.value = v;
-                    opt.textContent = v;
-                    sel.appendChild(opt);
-                });
-            } else {
-                const select = document.createElement('select');
-                select.className = 'filter-value';
-                select.innerHTML = '<option value="">-- Select --</option>';
-                values.forEach(v => {
-                    const opt = document.createElement('option');
-                    opt.value = v;
-                    opt.textContent = v;
-                    select.appendChild(opt);
-                });
-                input.parentNode.replaceChild(select, input);
-            }
-        } else {
-            const existingSelect = row.querySelector('.filter-value');
-            if (existingSelect && existingSelect.tagName === 'SELECT') {
-                const input = document.createElement('input');
-                input.className = 'filter-value';
-                input.type = 'text';
-                input.placeholder = 'Value';
-                input.value = existingSelect.value;
-                existingSelect.parentNode.replaceChild(input, existingSelect);
-            }
+    // Wire autocomplete
+    wireAutocomplete(row);
+    if (column) {
+        const catCols = ['Team', 'Pos', 'Player', 'Season'];
+        if (catCols.includes(column)) {
+            if (column === 'Team' || column === 'Pos') showCheckboxDropdown(row, column);
+            const dlId = buildDatalist(column);
+            valInput.setAttribute('list', dlId);
         }
-    });
-
-    if (column === 'Team' || column === 'Pos') {
-        colSelect.dispatchEvent(new Event('change'));
     }
 
     populateFilterColumns();
@@ -417,9 +470,8 @@ function getFilterConfigs() {
     document.querySelectorAll('.filter-row').forEach(row => {
         const col = row.querySelector('.filter-column')?.value;
         const op = row.querySelector('.filter-operator')?.value;
-        const valEl = row.querySelector('.filter-value');
-        let val = valEl ? (valEl.value || '').trim() : '';
-        const val2 = row.querySelector('.filter-value2')?.value?.trim() || '';
+        const val = row.querySelector('.filter-value')?.value.trim();
+        const val2 = row.querySelector('.filter-value2')?.value.trim();
         if (col && val) {
             configs.push({ column: col, operator: op, value: val, value2: val2 });
         }
@@ -437,17 +489,21 @@ function applyFiltersToData(data, filters) {
             const val2 = f.value2;
             let ok = false;
             switch (f.operator) {
-                case '=': ok = (String(cell).toLowerCase() === String(val).toLowerCase()); break;
+                case '=':  ok = (String(cell).toLowerCase() === String(val).toLowerCase()); break;
                 case '!=': ok = (String(cell).toLowerCase() !== String(val).toLowerCase()); break;
-                case '>': ok = (parseFloat(cell) > parseFloat(val)); break;
-                case '<': ok = (parseFloat(cell) < parseFloat(val)); break;
+                case '>':  ok = (parseFloat(cell) > parseFloat(val)); break;
+                case '<':  ok = (parseFloat(cell) < parseFloat(val)); break;
                 case '>=': ok = (parseFloat(cell) >= parseFloat(val)); break;
                 case '<=': ok = (parseFloat(cell) <= parseFloat(val)); break;
                 case 'contains': ok = String(cell).toLowerCase().includes(String(val).toLowerCase()); break;
                 case 'between':
                     if (val2 !== '') ok = (parseFloat(cell) >= parseFloat(val) && parseFloat(cell) <= parseFloat(val2));
-                    else ok = false;
                     break;
+                case 'in': {
+                    const vals = val.split(',').map(s => s.trim().toLowerCase());
+                    ok = vals.includes(String(cell).toLowerCase());
+                    break;
+                }
                 default: ok = false;
             }
             if (!ok) return false;
@@ -462,7 +518,6 @@ function applyFilters() {
     const baseData = isGrouped ? groupedData : fullRawData;
     filteredData = applyFiltersToData(baseData, activeFilters);
     currentData = filteredData;
-    applyCustomColumns(currentData);
     renderTable(currentData);
     updateFilterStatus();
     populateMetricSelect();
@@ -474,23 +529,17 @@ function clearFilters() {
         else {
             row.querySelector('.filter-column').value = '';
             row.querySelector('.filter-operator').value = '=';
-            const valEl = row.querySelector('.filter-value');
-            if (valEl) {
-                if (valEl.tagName === 'SELECT') {
-                    valEl.innerHTML = '<option value="">-- Select --</option>';
-                } else {
-                    valEl.value = '';
-                }
-            }
-            const val2 = row.querySelector('.filter-value2');
-            if (val2) { val2.value = ''; val2.style.display = 'none'; }
+            row.querySelector('.filter-value').value = '';
+            row.querySelector('.filter-value2').value = '';
+            row.querySelector('.filter-value2').style.display = 'none';
+            row.querySelector('.filter-value').removeAttribute('list');
+            hideCheckboxDropdown(row);
         }
     });
     activeFilters = [];
     const baseData = isGrouped ? groupedData : fullRawData;
     filteredData = [...baseData];
     currentData = filteredData;
-    applyCustomColumns(currentData);
     renderTable(currentData);
     updateFilterStatus();
     populateMetricSelect();
@@ -504,13 +553,12 @@ function updateFilterStatus() {
 }
 
 // --------------------------------------------------------------
-// 7. GROUPING, RESET, EXPORT – with custom column reapplication
+// 7. GROUPING, RESET, EXPORT
 // --------------------------------------------------------------
 function groupByPlayer() {
     if (!fullRawData.length) return;
-    const baseData = fullRawData;
     const playerMap = new Map();
-    baseData.forEach(row => {
+    fullRawData.forEach(row => {
         const name = row.Player;
         if (!name) return;
         if (!playerMap.has(name)) {
@@ -520,8 +568,6 @@ function groupByPlayer() {
             for (let [key, value] of Object.entries(row)) {
                 if (typeof value === "number" && key !== "Yr" && key !== "Season") {
                     existing[key] = (existing[key] || 0) + value;
-                } else if (key === "GP" && typeof value === "number") {
-                    existing.GP = (existing.GP || 0) + value;
                 }
             }
         }
@@ -530,7 +576,6 @@ function groupByPlayer() {
     isGrouped = true;
     filteredData = applyFiltersToData(groupedData, activeFilters);
     currentData = filteredData;
-    applyCustomColumns(currentData);
     renderTable(currentData);
     populateMetricSelect();
     alert(`Grouped into ${groupedData.length} unique players.`);
@@ -542,7 +587,6 @@ function resetToRaw() {
     groupedData = [];
     filteredData = applyFiltersToData(fullRawData, activeFilters);
     currentData = filteredData;
-    applyCustomColumns(currentData);
     renderTable(currentData);
     populateMetricSelect();
 }
@@ -579,7 +623,7 @@ function setPageSize(size) {
 }
 
 // --------------------------------------------------------------
-// 9. CHART (unchanged)
+// 9. CHART – full rewrite with all new features
 // --------------------------------------------------------------
 function toggleChartVisibility() {
     const section = document.getElementById('chartSection');
@@ -590,182 +634,305 @@ function populateMetricSelect() {
     const select = document.getElementById("chartMetricSelect");
     const selectX = document.getElementById("chartMetricX");
     if (!select) return;
-    const emptyY = '<option value="">-- Y Axis stat --</option>';
-    const emptyX = '<option value="">-- X Axis stat (optional label) --</option>';
-    select.innerHTML = emptyY;
-    if (selectX) selectX.innerHTML = emptyX;
+    select.innerHTML = '<option value="">-- Y Axis stat --</option>';
+    selectX.innerHTML = '<option value="">-- X Axis stat --</option>';
     if (!currentData.length) return;
     const sample = currentData[0];
     for (let key in sample) {
         if (typeof sample[key] === "number") {
-            const optY = document.createElement("option");
-            optY.value = key; optY.textContent = key;
-            select.appendChild(optY);
-            if (selectX) {
-                const optX = document.createElement("option");
-                optX.value = key; optX.textContent = key;
-                selectX.appendChild(optX);
-            }
+            [select, selectX].forEach(s => {
+                const opt = document.createElement("option");
+                opt.value = key; opt.textContent = key;
+                s.appendChild(opt);
+            });
         }
     }
 }
 
 function drawChartFromCurrentData() {
-    const metricY = document.getElementById("chartMetricSelect").value;
-    const metricX = document.getElementById("chartMetricX")?.value;
-    const chartType = document.getElementById("chartTypeSelect").value;
+    const metricY    = document.getElementById("chartMetricSelect").value;
+    const metricX    = document.getElementById("chartMetricX").value;
+    const chartType  = document.getElementById("chartTypeSelect").value;
+    const colorByTeam = document.getElementById("colorByTeamCheck").checked;
+    const showLogos   = document.getElementById("showLogosCheck").checked;
+    const showLabels  = document.getElementById("showPointLabels").checked;
+    const showMeanX   = document.getElementById("showMeanX").checked;
+    const showMeanY   = document.getElementById("showMeanY").checked;
+    const showLinReg  = document.getElementById("showLinReg").checked;
+    const customTitle = document.getElementById("chartTitleInput").value.trim();
+    const customAxisX = document.getElementById("chartAxisXInput").value.trim();
+    const customAxisY = document.getElementById("chartAxisYInput").value.trim();
+    const chartSize   = document.getElementById("chartSizeSelect").value; // small/medium/large
+
     if (!metricY) { alert("Please select a Y Axis stat."); return; }
     if (!currentData.length) { alert("No data available."); return; }
-    if (chartType === 'scatter' && !metricX) {
-        alert("Scatter plot needs an X Axis stat too. Please select one."); return;
-    }
-    const labels = [], valuesY = [], valuesX = [];
-    for (let row of currentData) {
+    if (chartType === 'scatter' && !metricX) { alert("Scatter plot needs an X Axis stat."); return; }
+
+    // Collect data
+    const points = [];
+    for (const row of currentData) {
         const y = row[metricY];
-        if (typeof y !== "number" || isNaN(y)) continue;
+        if (typeof y !== 'number' || isNaN(y)) continue;
         if (chartType === 'scatter') {
             const x = row[metricX];
-            if (typeof x !== "number" || isNaN(x)) continue;
-            valuesX.push(x);
+            if (typeof x !== 'number' || isNaN(x)) continue;
+            points.push({ x, y, label: row.Player || 'Unknown', team: row.Team || '' });
+        } else {
+            points.push({ y, label: row.Player || 'Unknown', team: row.Team || '' });
         }
-        labels.push(row.Player || "Unknown");
-        valuesY.push(y);
     }
-    if (labels.length === 0) { alert("No valid numeric data."); return; }
-    let finalLabels = labels, finalY = valuesY, finalX = valuesX;
-    if (chartType === 'radar' && labels.length > 10) {
-        const indexed = valuesY.map((v, i) => ({ v, i })).sort((a, b) => b.v - a.v).slice(0, 10);
-        finalLabels = indexed.map(o => labels[o.i]);
-        finalY = indexed.map(o => o.v);
+    if (!points.length) { alert("No valid numeric data for selected metrics."); return; }
+
+    // Limit radar to top-10
+    let finalPoints = points;
+    if (chartType === 'radar' && points.length > 10) {
+        finalPoints = [...points].sort((a,b) => b.y - a.y).slice(0, 10);
     }
+
+    // Resize canvas
+    const canvas = document.getElementById("statsChart");
+    const sizes = { small: 280, medium: 420, large: 580 };
+    canvas.height = sizes[chartSize] ?? 420;
+
     document.getElementById('chartSection').style.display = 'block';
-    const ctx = document.getElementById("statsChart").getContext("2d");
+    const ctx = canvas.getContext("2d");
     if (chartInstance) chartInstance.destroy();
-    const baseColor = 'rgba(30, 70, 110, 0.6)';
-    const borderColor = '#1e466e';
+
+    // Build per-point colors
+    const bgColors  = finalPoints.map(p => colorByTeam ? getTeamColor(p.team).bg     : 'rgba(30,70,110,0.7)');
+    const bdColors  = finalPoints.map(p => colorByTeam ? getTeamColor(p.team).border  : '#1e466e');
+
+    const titleText = customTitle || (chartType === 'scatter' ? `${customAxisX || metricX} vs ${customAxisY || metricY}` : `${customAxisY || metricY} by Player`);
+    const xAxisLabel = customAxisX || (chartType === 'scatter' ? metricX : 'Player');
+    const yAxisLabel = customAxisY || metricY;
+
+    // ---- Annotation plugin lines (mean + linreg) ----
+    const annotations = {};
+
+    if ((showMeanX || showMeanY || showLinReg) && chartType === 'scatter') {
+        const xs = finalPoints.map(p => p.x);
+        const ys = finalPoints.map(p => p.y);
+        const n  = xs.length;
+        const meanX = xs.reduce((a,b)=>a+b,0)/n;
+        const meanY = ys.reduce((a,b)=>a+b,0)/n;
+
+        if (showMeanX) {
+            annotations['meanXLine'] = {
+                type: 'line',
+                scaleID: 'x',
+                value: meanX,
+                borderColor: 'rgba(200,50,50,0.7)',
+                borderWidth: 2,
+                borderDash: [6,4],
+                label: { display: true, content: `Mean ${xAxisLabel}: ${meanX.toFixed(1)}`, position: 'end', backgroundColor: 'rgba(200,50,50,0.8)', color: '#fff', font: { size: 11 } }
+            };
+        }
+        if (showMeanY) {
+            annotations['meanYLine'] = {
+                type: 'line',
+                scaleID: 'y',
+                value: meanY,
+                borderColor: 'rgba(50,150,50,0.7)',
+                borderWidth: 2,
+                borderDash: [6,4],
+                label: { display: true, content: `Mean ${yAxisLabel}: ${meanY.toFixed(1)}`, position: 'end', backgroundColor: 'rgba(50,150,50,0.8)', color: '#fff', font: { size: 11 } }
+            };
+        }
+        if (showLinReg) {
+            // Compute slope & intercept
+            const sumX  = xs.reduce((a,b)=>a+b,0);
+            const sumY  = ys.reduce((a,b)=>a+b,0);
+            const sumXY = xs.reduce((a,x,i)=>a+x*ys[i],0);
+            const sumX2 = xs.reduce((a,x)=>a+x*x,0);
+            const denom = n*sumX2 - sumX*sumX;
+            if (denom !== 0) {
+                const slope = (n*sumXY - sumX*sumY)/denom;
+                const intercept = (sumY - slope*sumX)/n;
+                const minX = Math.min(...xs);
+                const maxX = Math.max(...xs);
+                annotations['linRegLine'] = {
+                    type: 'line',
+                    xMin: minX, xMax: maxX,
+                    yMin: slope*minX+intercept, yMax: slope*maxX+intercept,
+                    borderColor: 'rgba(150,50,200,0.85)',
+                    borderWidth: 2.5,
+                    label: {
+                        display: true,
+                        content: `y = ${slope.toFixed(3)}x + ${intercept.toFixed(2)}`,
+                        position: 'center',
+                        backgroundColor: 'rgba(150,50,200,0.8)',
+                        color: '#fff',
+                        font: { size: 11 }
+                    }
+                };
+            }
+        }
+    } else if (chartType !== 'scatter') {
+        // For bar/line, mean is a horizontal annotation on Y
+        if (showMeanY) {
+            const ys = finalPoints.map(p => p.y);
+            const meanY = ys.reduce((a,b)=>a+b,0)/ys.length;
+            annotations['meanYLine'] = {
+                type: 'line', scaleID: 'y', value: meanY,
+                borderColor: 'rgba(50,150,50,0.7)', borderWidth: 2, borderDash: [6,4],
+                label: { display: true, content: `Mean: ${meanY.toFixed(1)}`, position: 'end', backgroundColor: 'rgba(50,150,50,0.8)', color: '#fff', font: { size: 11 } }
+            };
+        }
+    }
+
+    // Point label plugin config
+    const datalabelsPlugin = showLabels ? {
+        anchor: 'end', align: 'top', offset: 3,
+        font: { size: 10 },
+        color: '#333',
+        formatter: (val, ctx2) => finalPoints[ctx2.dataIndex]?.label ?? ''
+    } : false;
+
     let config;
+
     if (chartType === 'scatter') {
-        const scatterData = valuesY.map((y, i) => ({ x: valuesX[i], y }));
+        const scatterData = finalPoints.map(p => ({ x: p.x, y: p.y }));
+        // If color by team, split into per-team datasets so legend shows teams
+        let datasets;
+        if (colorByTeam) {
+            const teamMap = new Map();
+            finalPoints.forEach((p,i) => {
+                if (!teamMap.has(p.team)) teamMap.set(p.team, { pts: [], idxs: [] });
+                teamMap.get(p.team).pts.push({ x: p.x, y: p.y });
+                teamMap.get(p.team).idxs.push(i);
+            });
+            datasets = [...teamMap.entries()].map(([team, info]) => {
+                const c = getTeamColor(team);
+                return {
+                    label: team || 'Unknown',
+                    data: info.pts,
+                    backgroundColor: c.bg,
+                    borderColor: c.border,
+                    pointRadius: 5,
+                    pointHoverRadius: 8,
+                    datalabels: showLabels ? {
+                        anchor: 'end', align: 'top', offset: 3, font: { size: 10 }, color: '#333',
+                        formatter: (val, ctx2) => {
+                            // find the global index for this point
+                            return info.idxs[ctx2.dataIndex] !== undefined
+                                ? finalPoints[info.idxs[ctx2.dataIndex]]?.label : '';
+                        }
+                    } : { display: false }
+                };
+            });
+        } else {
+            datasets = [{
+                label: `${xAxisLabel} vs ${yAxisLabel}`,
+                data: scatterData,
+                backgroundColor: bgColors,
+                borderColor: bdColors,
+                pointRadius: 5, pointHoverRadius: 8,
+                datalabels: datalabelsPlugin || { display: false }
+            }];
+        }
+
         config = {
             type: 'scatter',
-            data: {
-                datasets: [{
-                    label: `${metricX} vs ${metricY}`,
-                    data: scatterData,
-                    backgroundColor: baseColor,
-                    borderColor: borderColor,
-                    pointRadius: 4
-                }]
-            },
+            data: { datasets },
             options: {
-                responsive: true,
-                maintainAspectRatio: true,
+                responsive: true, maintainAspectRatio: false,
                 plugins: {
+                    title: { display: true, text: titleText, font: { size: 16 } },
+                    legend: { position: 'top' },
                     tooltip: {
                         callbacks: {
-                            label: (ctx) => {
-                                const idx = ctx.dataIndex;
-                                return `${labels[idx]}: (${ctx.raw.x.toLocaleString()}, ${ctx.raw.y.toLocaleString()})`;
+                            label: (ctx2) => {
+                                const i = ctx2.dataIndex;
+                                const ds = ctx2.dataset;
+                                // Try to find original label
+                                let lbl = '';
+                                if (!colorByTeam) lbl = finalPoints[i]?.label ?? '';
+                                else {
+                                    // Walk team datasets to find player
+                                    const dsLabel = ds.label;
+                                    const teamPts = finalPoints.filter(p => p.team === dsLabel);
+                                    lbl = teamPts[i]?.label ?? '';
+                                }
+                                return `${lbl}: (${ctx2.raw.x.toLocaleString()}, ${ctx2.raw.y.toLocaleString()})`;
                             }
                         }
                     },
-                    legend: { position: 'top' }
+                    annotation: { annotations }
                 },
                 scales: {
-                    x: { title: { display: true, text: metricX } },
-                    y: { beginAtZero: false, title: { display: true, text: metricY } }
+                    x: { title: { display: true, text: xAxisLabel, font: { size: 13 } } },
+                    y: { beginAtZero: false, title: { display: true, text: yAxisLabel, font: { size: 13 } } }
                 }
-            }
+            },
+            plugins: [ChartDataLabels]
         };
+
     } else if (chartType === 'radar') {
         config = {
             type: 'radar',
             data: {
-                labels: finalLabels,
+                labels: finalPoints.map(p => p.label),
                 datasets: [{
-                    label: metricY,
-                    data: finalY,
-                    backgroundColor: 'rgba(30, 70, 110, 0.25)',
-                    borderColor: borderColor,
-                    borderWidth: 2,
-                    pointBackgroundColor: borderColor
+                    label: yAxisLabel,
+                    data: finalPoints.map(p => p.y),
+                    backgroundColor: 'rgba(30,70,110,0.25)',
+                    borderColor: '#1e466e', borderWidth: 2,
+                    pointBackgroundColor: bdColors
                 }]
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: { legend: { position: 'top' } },
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    title: { display: true, text: titleText, font: { size: 16 } },
+                    legend: { position: 'top' },
+                    annotation: {}
+                },
                 scales: { r: { beginAtZero: true } }
-            }
+            },
+            plugins: [ChartDataLabels]
         };
+
     } else {
+        // bar or line
         config = {
             type: chartType,
             data: {
-                labels: finalLabels,
+                labels: finalPoints.map(p => p.label),
                 datasets: [{
-                    label: metricY,
-                    data: finalY,
-                    backgroundColor: baseColor,
-                    borderColor: borderColor,
+                    label: yAxisLabel,
+                    data: finalPoints.map(p => p.y),
+                    backgroundColor: bgColors,
+                    borderColor: bdColors,
                     borderWidth: chartType === 'line' ? 2 : 1,
                     fill: chartType === 'line' ? false : undefined,
                     tension: chartType === 'line' ? 0.3 : undefined,
-                    pointRadius: chartType === 'line' ? 3 : undefined
+                    pointRadius: chartType === 'line' ? 3 : undefined,
+                    datalabels: datalabelsPlugin || { display: false }
                 }]
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: true,
+                responsive: true, maintainAspectRatio: false,
                 plugins: {
+                    title: { display: true, text: titleText, font: { size: 16 } },
                     legend: { position: 'top' },
-                    tooltip: { callbacks: { label: (ctx) => ctx.raw.toLocaleString() } }
+                    tooltip: { callbacks: { label: (ctx2) => ctx2.raw.toLocaleString() } },
+                    annotation: { annotations }
                 },
                 scales: {
-                    y: { beginAtZero: true, title: { display: true, text: metricY } },
-                    x: { ticks: { autoSkip: true, maxTicksLimit: 30 } }
+                    y: { beginAtZero: true, title: { display: true, text: yAxisLabel, font: { size: 13 } } },
+                    x: { title: { display: true, text: xAxisLabel, font: { size: 13 } }, ticks: { autoSkip: true, maxTicksLimit: 30 } }
                 }
-            }
+            },
+            plugins: [ChartDataLabels]
         };
     }
+
     chartInstance = new Chart(ctx, config);
 }
 
 // --------------------------------------------------------------
-// 10. COMPUTED COLUMN LOGIC – store definitions and reapply
+// 10. COMPUTED COLUMN LOGIC
 // --------------------------------------------------------------
-function applyCustomColumns(data) {
-    if (!customColumnDefinitions.length) return;
-    for (let row of data) {
-        for (let def of customColumnDefinitions) {
-            const { name, formula, condition } = def;
-            let shouldCompute = true;
-            if (condition) {
-                try {
-                    const condFn = new Function('row', `return (${condition});`);
-                    shouldCompute = !!condFn(row);
-                } catch (e) {
-                    shouldCompute = false;
-                }
-            }
-            if (shouldCompute) {
-                try {
-                    const fn = new Function('row', `return (${formula});`);
-                    let result = fn(row);
-                    if (typeof result === 'number' && !isFinite(result)) {
-                        result = null;
-                    }
-                    row[name] = result;
-                } catch (e) {
-                    row[name] = null;
-                }
-            } else {
-                row[name] = null;
-            }
-        }
-    }
-}
-
 function addComputedColumn() {
     const nameInput = document.getElementById("compName");
     const formulaInput = document.getElementById("compFormula");
@@ -775,78 +942,69 @@ function addComputedColumn() {
     const condition = conditionInput.value.trim();
 
     if (!name) { alert("Please enter a column name."); return; }
-    if (!formula) { alert("Please enter a formula (e.g., Rush.Yds / GP)."); return; }
-    if (allColumns.includes(name)) {
-        alert(`Column "${name}" already exists. Please choose another name.`);
-        return;
-    }
+    if (!formula) { alert("Please enter a formula."); return; }
+    if (allColumns.includes(name)) { alert(`Column "${name}" already exists.`); return; }
 
-    // Validate with a test row
-    let testRow = fullRawData[0] || {};
+    // Build function from formula – use `with` so column names resolve
+    const colNames = allColumns;
+    let fn;
     try {
-        const fn = new Function('row', `return (${formula});`);
-        fn(testRow);
+        fn = new Function('row', `with(row){return (${formula});}`);
     } catch (e) {
-        alert(`Invalid formula: ${e.message}`);
-        return;
+        alert(`Invalid formula: ${e.message}`); return;
     }
+    let condFn = null;
     if (condition) {
         try {
-            const condFn = new Function('row', `return (${condition});`);
-            condFn(testRow);
+            condFn = new Function('row', `with(row){return (${condition});}`);
         } catch (e) {
-            alert(`Invalid condition: ${e.message}`);
-            return;
+            alert(`Invalid condition: ${e.message}`); return;
         }
     }
 
-    // Store definition
-    const def = { name, formula, condition };
-    customColumnDefinitions.push(def);
+    let count = 0;
+    for (let row of currentData) {
+        let shouldCompute = true;
+        if (condFn) {
+            try { shouldCompute = !!condFn(row); } catch(e) { shouldCompute = false; }
+        }
+        if (shouldCompute) {
+            try {
+                let result = fn(row);
+                if (typeof result === 'number' && !isFinite(result)) result = null;
+                row[name] = result;
+                count++;
+            } catch(e) { row[name] = null; }
+        } else {
+            row[name] = null;
+        }
+    }
 
-    // Add to categoryMap and allColumns
     if (!categoryMap["Custom"]) categoryMap["Custom"] = [];
     categoryMap["Custom"].push(name);
     allColumns.push(name);
 
-    // Add checkbox to UI (append to Custom category)
-    let customCatDiv = null;
+    // Add checkbox to Custom category
     document.querySelectorAll('.category').forEach(div => {
         const label = div.querySelector('.category-header span');
         if (label && label.textContent === "Custom") {
-            customCatDiv = div;
+            const subDiv = div.querySelector('.sub-checkboxes');
+            const labelEl = document.createElement("label");
+            const cb = document.createElement("input");
+            cb.type = "checkbox"; cb.dataset.col = name; cb.checked = true;
+            cb.addEventListener("change", () => refreshTableFromUI());
+            labelEl.appendChild(cb);
+            labelEl.appendChild(document.createTextNode(` ${name}`));
+            subDiv.appendChild(labelEl);
+            const catCheck = div.querySelector('.category-header input[type="checkbox"]');
+            updateCategoryHeaderState(div, catCheck);
         }
     });
-    if (customCatDiv) {
-        const subDiv = customCatDiv.querySelector('.sub-checkboxes');
-        const labelEl = document.createElement("label");
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.dataset.col = name;
-        cb.checked = true;
-        cb.addEventListener("change", () => refreshTableFromUI());
-        labelEl.appendChild(cb);
-        labelEl.appendChild(document.createTextNode(` ${name}`));
-        subDiv.appendChild(labelEl);
-        const catCheck = customCatDiv.querySelector('.category-header input[type="checkbox"]');
-        updateCategoryHeaderState(customCatDiv, catCheck);
-    } else {
-        // Rebuild UI if Custom category missing
-        buildCategoryUI();
-    }
 
     populateFilterColumns();
-
-    // Apply to current data and re-render
-    applyCustomColumns(currentData);
     refreshTableFromUI();
-
-    // Clear inputs
-    nameInput.value = "";
-    formulaInput.value = "";
-    conditionInput.value = "";
-
-    alert(`Added column "${name}" for ${currentData.length} rows.`);
+    nameInput.value = ""; formulaInput.value = ""; conditionInput.value = "";
+    alert(`Added column "${name}" for ${count} rows.`);
 }
 
 // --------------------------------------------------------------
@@ -867,19 +1025,18 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("clearFiltersBtn").addEventListener("click", clearFilters);
     addFilterRow();
 
-    document.getElementById("pageSizeSelect").addEventListener("change", (e) => {
-        setPageSize(e.target.value);
-    });
+    document.getElementById("pageSizeSelect").addEventListener("change", (e) => setPageSize(e.target.value));
 
     document.getElementById("chartTypeSelect").addEventListener("change", (e) => {
-        const xSel = document.getElementById("chartMetricX");
-        if (xSel) xSel.style.display = e.target.value === 'scatter' ? 'inline-block' : 'none';
+        const isScatter = e.target.value === 'scatter';
+        document.getElementById("chartMetricX").style.display = isScatter ? 'inline-block' : 'none';
+        document.getElementById("showMeanX").parentElement.style.display = isScatter ? 'inline-flex' : 'none';
+        document.getElementById("showLinReg").parentElement.style.display = isScatter ? 'inline-flex' : 'none';
     });
 
     document.getElementById("drawChartBtn").addEventListener("click", drawChartFromCurrentData);
-
     document.getElementById("addCompColBtn").addEventListener("click", addComputedColumn);
-    document.getElementById("compName").addEventListener("keydown", (e) => { if (e.key === "Enter") addComputedColumn(); });
-    document.getElementById("compFormula").addEventListener("keydown", (e) => { if (e.key === "Enter") addComputedColumn(); });
-    document.getElementById("compCondition").addEventListener("keydown", (e) => { if (e.key === "Enter") addComputedColumn(); });
+    ["compName","compFormula","compCondition"].forEach(id => {
+        document.getElementById(id).addEventListener("keydown", (e) => { if (e.key === "Enter") addComputedColumn(); });
+    });
 });
