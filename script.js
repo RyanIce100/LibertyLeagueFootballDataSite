@@ -32,31 +32,66 @@ let uniquePositions = [];
 // Track sort state per column for consistent cycling
 let sortState = {}; // { colName: 'asc' | 'desc' | 'none' }
 
-// Team color palette (Liberty League teams — extend as needed)
-const TEAM_COLORS = {
-    "Bard":        { bg: "rgba(0,56,101,0.7)",   border: "#003865" },
-    "Clarkson":    { bg: "rgba(0,114,198,0.7)",  border: "#0072C6" },
-    "Hobart":      { bg: "rgba(149,0,31,0.7)",   border: "#95001F" },
-    "Ithaca":      { bg: "rgba(0,102,51,0.7)",   border: "#006633" },
-    "RPI":         { bg: "rgba(209,0,24,0.7)",   border: "#D10018" },
-    "Rochester":   { bg: "rgba(253,185,19,0.7)", border: "#FDB913" },
-    "SLU":         { bg: "rgba(0,68,124,0.7)",   border: "#00447C" },
-    "Skidmore":    { bg: "rgba(0,101,65,0.7)",   border: "#006541" },
-    "Union":       { bg: "rgba(129,0,21,0.7)",   border: "#810015" },
-    "Utica":       { bg: "rgba(0,83,155,0.7)",   border: "#00539B" },
-    "DEFAULT":     { bg: "rgba(30,70,110,0.7)",  border: "#1e466e" }
+// Team color + logo data keyed by CSV team name
+const TEAM_DATA = {
+    "Buffalo_St":     { hex: "#D25F15", logo: "buffst_logo.svg" },
+    "Hilbert":        { hex: "#233F94", logo: "hilbert_logo.svg" },
+    "Hobart":         { hex: "#3C0C5C", logo: "hobart_logo.svg" },
+    "Ithaca":         { hex: "#013158", logo: "ithaca_logo.svg" },
+    "Rochester_NY":   { hex: "#FFD82B", logo: "rochester_logo.svg" },
+    "Rensselaer":     { hex: "#EE3124", logo: "RPI_logo.svg" },
+    "Springfield":    { hex: "#BBBBBB", logo: "springfield_logo.svg" },
+    "Union_NY":       { hex: "#822433", logo: "union_logo.svg" },
+    "Merchant_Marine":{ hex: "#093A88", logo: "USMMA_logo.png" },
+    "WPI":            { hex: "#AC2B37", logo: "wpi_logo.svg" },
+    "St_Lawrence":    { hex: "#5B2F18", logo: "slu_logo.svg" },
 };
 
+// Pre-load logo images for chart use
+const teamLogoImages = {};
+function preloadTeamLogos() {
+    for (const [team, data] of Object.entries(TEAM_DATA)) {
+        const img = new Image();
+        img.src = data.logo;
+        teamLogoImages[team] = img;
+    }
+}
+
+function hexToRgba(hex, alpha = 0.75) {
+    const r = parseInt(hex.slice(1,3),16);
+    const g = parseInt(hex.slice(3,5),16);
+    const b = parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function getTeamColor(teamName) {
-    if (!teamName) return TEAM_COLORS.DEFAULT;
-    // Try exact match first, then partial
-    if (TEAM_COLORS[teamName]) return TEAM_COLORS[teamName];
-    for (const key of Object.keys(TEAM_COLORS)) {
-        if (key !== "DEFAULT" && teamName.toLowerCase().includes(key.toLowerCase())) {
-            return TEAM_COLORS[key];
+    if (!teamName) return { bg: "rgba(30,70,110,0.7)", border: "#1e466e" };
+    // Exact match
+    if (TEAM_DATA[teamName]) {
+        const hex = TEAM_DATA[teamName].hex;
+        return { bg: hexToRgba(hex), border: hex };
+    }
+    // Partial match fallback
+    for (const key of Object.keys(TEAM_DATA)) {
+        if (teamName.toLowerCase().includes(key.toLowerCase()) ||
+            key.toLowerCase().includes(teamName.toLowerCase())) {
+            const hex = TEAM_DATA[key].hex;
+            return { bg: hexToRgba(hex), border: hex };
         }
     }
-    return TEAM_COLORS.DEFAULT;
+    return { bg: "rgba(30,70,110,0.7)", border: "#1e466e" };
+}
+
+function getTeamLogo(teamName) {
+    if (!teamName) return null;
+    if (TEAM_DATA[teamName]) return teamLogoImages[teamName];
+    for (const key of Object.keys(TEAM_DATA)) {
+        if (teamName.toLowerCase().includes(key.toLowerCase()) ||
+            key.toLowerCase().includes(teamName.toLowerCase())) {
+            return teamLogoImages[key];
+        }
+    }
+    return null;
 }
 
 // --------------------------------------------------------------
@@ -77,6 +112,7 @@ function loadData() {
             // Extract unique teams and positions for autocomplete
             uniqueTeams = [...new Set(fullRawData.map(r => r.Team).filter(Boolean))].sort();
             uniquePositions = [...new Set(fullRawData.map(r => r.Pos).filter(Boolean))].sort();
+            preloadTeamLogos();
             buildCategoryUI();
             populateFilterColumns();
             populateMetricSelect();
@@ -801,8 +837,32 @@ function drawChartFromCurrentData() {
 
     let config;
 
+    // Custom plugin: draw team logo images on scatter points
+    const logoPointPlugin = {
+        id: 'logoPoints',
+        afterDatasetsDraw(chart) {
+            if (!showLogos || !colorByTeam) return;
+            const ctx2 = chart.ctx;
+            chart.data.datasets.forEach((ds, dsIdx) => {
+                const meta = chart.getDatasetMeta(dsIdx);
+                const team = ds.label;
+                const img = getTeamLogo(team);
+                if (!img || !img.complete || img.naturalWidth === 0) return;
+                meta.data.forEach(pt => {
+                    const size = 22;
+                    ctx2.save();
+                    ctx2.beginPath();
+                    ctx2.arc(pt.x, pt.y, size/2, 0, Math.PI*2);
+                    ctx2.closePath();
+                    ctx2.clip();
+                    ctx2.drawImage(img, pt.x - size/2, pt.y - size/2, size, size);
+                    ctx2.restore();
+                });
+            });
+        }
+    };
+
     if (chartType === 'scatter') {
-        const scatterData = finalPoints.map(p => ({ x: p.x, y: p.y }));
         // If color by team, split into per-team datasets so legend shows teams
         let datasets;
         if (colorByTeam) {
@@ -817,14 +877,15 @@ function drawChartFromCurrentData() {
                 return {
                     label: team || 'Unknown',
                     data: info.pts,
-                    backgroundColor: c.bg,
+                    backgroundColor: showLogos ? 'transparent' : c.bg,
                     borderColor: c.border,
-                    pointRadius: 5,
-                    pointHoverRadius: 8,
+                    borderWidth: showLogos ? 0 : 1,
+                    pointRadius: showLogos ? 13 : 5,
+                    pointHoverRadius: showLogos ? 16 : 8,
                     datalabels: showLabels ? {
-                        anchor: 'end', align: 'top', offset: 3, font: { size: 10 }, color: '#333',
+                        anchor: 'end', align: 'top', offset: showLogos ? 8 : 3,
+                        font: { size: 10 }, color: '#333',
                         formatter: (val, ctx2) => {
-                            // find the global index for this point
                             return info.idxs[ctx2.dataIndex] !== undefined
                                 ? finalPoints[info.idxs[ctx2.dataIndex]]?.label : '';
                         }
@@ -834,7 +895,7 @@ function drawChartFromCurrentData() {
         } else {
             datasets = [{
                 label: `${xAxisLabel} vs ${yAxisLabel}`,
-                data: scatterData,
+                data: finalPoints.map(p => ({ x: p.x, y: p.y })),
                 backgroundColor: bgColors,
                 borderColor: bdColors,
                 pointRadius: 5, pointHoverRadius: 8,
@@ -855,14 +916,12 @@ function drawChartFromCurrentData() {
                             label: (ctx2) => {
                                 const i = ctx2.dataIndex;
                                 const ds = ctx2.dataset;
-                                // Try to find original label
                                 let lbl = '';
-                                if (!colorByTeam) lbl = finalPoints[i]?.label ?? '';
-                                else {
-                                    // Walk team datasets to find player
-                                    const dsLabel = ds.label;
-                                    const teamPts = finalPoints.filter(p => p.team === dsLabel);
-                                    lbl = teamPts[i]?.label ?? '';
+                                if (!colorByTeam) {
+                                    lbl = finalPoints[i]?.label ?? '';
+                                } else {
+                                    const teamPts = finalPoints.filter(p => p.team === ds.label);
+                                    lbl = teamPts[i]?.label ?? ds.label;
                                 }
                                 return `${lbl}: (${ctx2.raw.x.toLocaleString()}, ${ctx2.raw.y.toLocaleString()})`;
                             }
@@ -875,7 +934,7 @@ function drawChartFromCurrentData() {
                     y: { beginAtZero: false, title: { display: true, text: yAxisLabel, font: { size: 13 } } }
                 }
             },
-            plugins: [ChartDataLabels]
+            plugins: [ChartDataLabels, logoPointPlugin]
         };
 
     } else if (chartType === 'radar') {
@@ -1013,6 +1072,34 @@ function removeComputedColumn(name) {
 // --------------------------------------------------------------
 // 10. COMPUTED COLUMN LOGIC
 // --------------------------------------------------------------
+
+// Build a safe evaluator for a formula that may reference dotted column names
+// like "Rush.Yds" by mapping them to safe JS identifiers.
+function buildFormulaFn(formula, allCols) {
+    // Map each col name to a safe var name: replace non-alphanum with _
+    const safeMap = {};
+    allCols.forEach(col => {
+        const safe = col.replace(/[^a-zA-Z0-9_]/g, '_');
+        safeMap[col] = safe;
+    });
+
+    // Replace col names in formula (longest first to avoid partial matches)
+    const sorted = [...allCols].sort((a,b) => b.length - a.length);
+    let safeFn = formula;
+    sorted.forEach(col => {
+        // Only replace whole tokens (not inside other words)
+        const escaped = col.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        safeFn = safeFn.replace(new RegExp(`(?<![a-zA-Z0-9_])${escaped}(?![a-zA-Z0-9_])`, 'g'), safeMap[col]);
+    });
+
+    // Build binding preamble: const Rush_Yds = row["Rush.Yds"]; ...
+    const bindings = allCols.map(col =>
+        `const ${safeMap[col]} = row[${JSON.stringify(col)}];`
+    ).join('\n');
+
+    return new Function('row', `${bindings}\nreturn (${safeFn});`);
+}
+
 function addComputedColumn() {
     const nameInput = document.getElementById("compName");
     const formulaInput = document.getElementById("compFormula");
@@ -1025,46 +1112,57 @@ function addComputedColumn() {
     if (!formula) { alert("Please enter a formula."); return; }
     if (allColumns.includes(name)) { alert(`Column "${name}" already exists.`); return; }
 
-    // Build function from formula – use `with` so column names resolve
-    const colNames = allColumns;
     let fn;
     try {
-        fn = new Function('row', `with(row){return (${formula});}`);
+        fn = buildFormulaFn(formula, allColumns);
+        // Quick test with empty object to catch syntax errors early
+        try { fn({}); } catch(e) { /* runtime errors are fine — column may just be missing */ }
     } catch (e) {
         alert(`Invalid formula: ${e.message}`); return;
     }
     let condFn = null;
     if (condition) {
         try {
-            condFn = new Function('row', `with(row){return (${condition});}`);
+            condFn = buildFormulaFn(condition, allColumns);
         } catch (e) {
             alert(`Invalid condition: ${e.message}`); return;
         }
     }
 
-    let count = 0;
-    for (let row of currentData) {
-        let shouldCompute = true;
-        if (condFn) {
-            try { shouldCompute = !!condFn(row); } catch(e) { shouldCompute = false; }
+    // Apply to ALL data arrays so values persist through resets/filters
+    function applyToArray(arr) {
+        let count = 0;
+        for (const row of arr) {
+            let shouldCompute = true;
+            if (condFn) {
+                try { shouldCompute = !!condFn(row); } catch(e) { shouldCompute = false; }
+            }
+            if (shouldCompute) {
+                try {
+                    let result = fn(row);
+                    if (typeof result === 'number' && !isFinite(result)) result = null;
+                    row[name] = result;
+                    count++;
+                } catch(e) { row[name] = null; }
+            } else {
+                row[name] = null;
+            }
         }
-        if (shouldCompute) {
-            try {
-                let result = fn(row);
-                if (typeof result === 'number' && !isFinite(result)) result = null;
-                row[name] = result;
-                count++;
-            } catch(e) { row[name] = null; }
-        } else {
-            row[name] = null;
-        }
+        return count;
     }
+
+    const count = applyToArray(fullRawData);
+    applyToArray(groupedData);
+    // currentData and filteredData share row objects with fullRawData/groupedData,
+    // so they're already updated — but run them anyway in case of edge cases.
+    applyToArray(currentData);
+    applyToArray(filteredData);
 
     if (!categoryMap["Custom"]) categoryMap["Custom"] = [];
     categoryMap["Custom"].push(name);
     allColumns.push(name);
 
-    // Add checkbox + remove button to Custom category
+    // Add checkbox + remove button to Custom category UI
     document.querySelectorAll('.category').forEach(div => {
         const label = div.querySelector('.category-header span');
         if (label && label.textContent === "Custom") {
@@ -1074,9 +1172,10 @@ function addComputedColumn() {
     });
 
     populateFilterColumns();
+    populateMetricSelect();
     refreshTableFromUI();
     nameInput.value = ""; formulaInput.value = ""; conditionInput.value = "";
-    alert(`Added column "${name}" for ${count} rows.`);
+    alert(`Added column "${name}" with values for ${count} rows.`);
 }
 
 // --------------------------------------------------------------
