@@ -263,7 +263,61 @@ select {
     background: #1e466e;
 }
 
-/* Search bar and pagination – keep compact */
+/* Checkbox dropdown for Team/Pos multi-select */
+.checkbox-dropdown {
+    margin-top: 6px;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 8px 10px;
+    max-height: 180px;
+    overflow-y: auto;
+    min-width: 160px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+.cbd-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.cbd-list label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    padding: 2px 0;
+    cursor: pointer;
+}
+.cbd-list label:hover {
+    color: #1e466e;
+}
+
+/* Custom column remove button – keep it subtle */
+.custom-col-row button {
+    padding: 1px 6px;
+    font-size: 11px;
+    background: #b02a37;
+    border-radius: 5px;
+    line-height: 1.4;
+}
+.custom-col-row button:hover {
+    background: #7a1a24;
+    transform: none;
+}
+
+/* Chart option labels */
+.chart-option-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
 .gridjs-search {
     margin-bottom: 10px;
 }

@@ -285,28 +285,43 @@ function populateFilterColumns() {
     });
 }
 
-// Build a datalist element for a given column
+// Build a datalist element for a given column.
+// For custom (computed) columns we scan currentData since they don't exist in fullRawData.
 function buildDatalist(col) {
     const id = `dl_${col.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    // Always rebuild for custom columns so values stay fresh; cache others
+    const isCustom = categoryMap["Custom"] && categoryMap["Custom"].includes(col);
     let dl = document.getElementById(id);
-    if (dl) return id; // already exists
+    if (dl && !isCustom) return id;
+    if (dl) dl.remove(); // rebuild custom datalist fresh
+
     dl = document.createElement('datalist');
     dl.id = id;
     let values = [];
-    if (col === 'Team') values = uniqueTeams;
-    else if (col === 'Pos') values = uniquePositions;
-    else {
-        // For other string columns, gather up to 200 unique values
+
+    if (col === 'Team') {
+        values = uniqueTeams;
+    } else if (col === 'Pos') {
+        values = uniquePositions;
+    } else {
+        // Search both fullRawData and currentData (catches computed columns)
+        const sources = isCustom ? currentData : [...fullRawData, ...currentData];
         const set = new Set();
-        for (const row of fullRawData) {
+        for (const row of sources) {
             const v = row[col];
-            if (v !== null && v !== undefined && typeof v === 'string') {
-                set.add(v);
-                if (set.size >= 200) break;
+            if (v !== null && v !== undefined && v !== "") {
+                set.add(String(v));
+                if (set.size >= 300) break;
             }
         }
-        values = [...set].sort();
+        // Sort: numeric if values look numeric, else lexicographic
+        const arr = [...set];
+        const allNumeric = arr.every(s => !isNaN(parseFloat(s)) && isFinite(s));
+        values = allNumeric
+            ? arr.sort((a, b) => parseFloat(a) - parseFloat(b))
+            : arr.sort((a, b) => a.localeCompare(b));
     }
+
     values.forEach(v => {
         const opt = document.createElement('option');
         opt.value = v;
@@ -323,18 +338,17 @@ function wireAutocomplete(row) {
 
     colSel.addEventListener('change', () => {
         const col = colSel.value;
-        // Only offer autocomplete for categorical columns
-        const catCols = ['Team', 'Pos', 'Player', 'Season'];
-        if (catCols.includes(col)) {
-            // For Team / Pos also show checkboxes panel
-            if (col === 'Team' || col === 'Pos') {
-                showCheckboxDropdown(row, col);
-            }
-            const dlId = buildDatalist(col);
-            valInput.setAttribute('list', dlId);
-        } else {
-            valInput.removeAttribute('list');
-            hideCheckboxDropdown(row);
+        hideCheckboxDropdown(row);
+        valInput.removeAttribute('list');
+        if (!col) return;
+
+        // Always build and attach a datalist (works for any column)
+        const dlId = buildDatalist(col);
+        valInput.setAttribute('list', dlId);
+
+        // For Team / Pos also show checkbox multi-select panel
+        if (col === 'Team' || col === 'Pos') {
+            showCheckboxDropdown(row, col);
         }
     });
 }
@@ -453,12 +467,9 @@ function addFilterRow(column = "", operator = "=", value = "", value2 = "") {
     // Wire autocomplete
     wireAutocomplete(row);
     if (column) {
-        const catCols = ['Team', 'Pos', 'Player', 'Season'];
-        if (catCols.includes(column)) {
-            if (column === 'Team' || column === 'Pos') showCheckboxDropdown(row, column);
-            const dlId = buildDatalist(column);
-            valInput.setAttribute('list', dlId);
-        }
+        const dlId = buildDatalist(column);
+        valInput.setAttribute('list', dlId);
+        if (column === 'Team' || column === 'Pos') showCheckboxDropdown(row, column);
     }
 
     populateFilterColumns();
@@ -930,6 +941,75 @@ function drawChartFromCurrentData() {
     chartInstance = new Chart(ctx, config);
 }
 
+// Build a checkbox row with a ✕ remove button for a custom column
+function addCustomColumnCheckbox(subDiv, catDiv, name) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "custom-col-row";
+    wrapper.dataset.customCol = name;
+    wrapper.style.cssText = "display:flex; align-items:center; gap:6px; margin:4px 0;";
+
+    const labelEl = document.createElement("label");
+    labelEl.style.cssText = "display:flex; align-items:center; gap:4px; font-size:13px; flex:1;";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.dataset.col = name; cb.checked = true;
+    cb.addEventListener("change", () => {
+        refreshTableFromUI();
+        const catCheck = catDiv.querySelector('.category-header input[type="checkbox"]');
+        updateCategoryHeaderState(catDiv, catCheck);
+    });
+    labelEl.appendChild(cb);
+    labelEl.appendChild(document.createTextNode(` ${name}`));
+
+    const removeBtn = document.createElement("button");
+    removeBtn.textContent = "✕";
+    removeBtn.title = `Remove column "${name}"`;
+    removeBtn.style.cssText = "padding:1px 6px; font-size:11px; background:#b02a37; border-radius:5px; cursor:pointer; flex-shrink:0;";
+    removeBtn.addEventListener("click", () => removeComputedColumn(name));
+
+    wrapper.appendChild(labelEl);
+    wrapper.appendChild(removeBtn);
+    subDiv.appendChild(wrapper);
+
+    const catCheck = catDiv.querySelector('.category-header input[type="checkbox"]');
+    updateCategoryHeaderState(catDiv, catCheck);
+}
+
+// Remove a computed column entirely
+function removeComputedColumn(name) {
+    if (!confirm(`Remove computed column "${name}"? This cannot be undone.`)) return;
+
+    // Strip from all data rows
+    for (const row of fullRawData)  delete row[name];
+    for (const row of groupedData)  delete row[name];
+    for (const row of currentData)  delete row[name];
+    for (const row of filteredData) delete row[name];
+
+    // Strip from tracking arrays / map
+    categoryMap["Custom"] = categoryMap["Custom"].filter(c => c !== name);
+    allColumns = allColumns.filter(c => c !== name);
+
+    // Remove datalist if it exists
+    const dl = document.getElementById(`dl_${name.replace(/[^a-zA-Z0-9]/g, '_')}`);
+    if (dl) dl.remove();
+
+    // Remove checkbox row from UI
+    document.querySelectorAll(`.custom-col-row[data-custom-col="${name}"]`).forEach(el => el.remove());
+
+    // Update category header state
+    document.querySelectorAll('.category').forEach(div => {
+        const label = div.querySelector('.category-header span');
+        if (label && label.textContent === "Custom") {
+            const catCheck = div.querySelector('.category-header input[type="checkbox"]');
+            updateCategoryHeaderState(div, catCheck);
+        }
+    });
+
+    // Rebuild filter column dropdowns and re-render
+    populateFilterColumns();
+    populateMetricSelect();
+    refreshTableFromUI();
+}
+
 // --------------------------------------------------------------
 // 10. COMPUTED COLUMN LOGIC
 // --------------------------------------------------------------
@@ -984,20 +1064,12 @@ function addComputedColumn() {
     categoryMap["Custom"].push(name);
     allColumns.push(name);
 
-    // Add checkbox to Custom category
+    // Add checkbox + remove button to Custom category
     document.querySelectorAll('.category').forEach(div => {
         const label = div.querySelector('.category-header span');
         if (label && label.textContent === "Custom") {
             const subDiv = div.querySelector('.sub-checkboxes');
-            const labelEl = document.createElement("label");
-            const cb = document.createElement("input");
-            cb.type = "checkbox"; cb.dataset.col = name; cb.checked = true;
-            cb.addEventListener("change", () => refreshTableFromUI());
-            labelEl.appendChild(cb);
-            labelEl.appendChild(document.createTextNode(` ${name}`));
-            subDiv.appendChild(labelEl);
-            const catCheck = div.querySelector('.category-header input[type="checkbox"]');
-            updateCategoryHeaderState(div, catCheck);
+            addCustomColumnCheckbox(subDiv, div, name);
         }
     });
 
