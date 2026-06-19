@@ -37,7 +37,7 @@ const TEAM_DATA = {
     "Buffalo_St":     { hex: "#D25F15", logo: "buffst_logo.svg" },
     "Hilbert":        { hex: "#233F94", logo: "hilbert_logo.svg" },
     "Hobart":         { hex: "#3C0C5C", logo: "hobart_logo.svg" },
-    "Ithaca":         { hex: "#013158", logo: "ithaca_logo.svg" },
+    "Ithaca":         { hex: "#013158", logo: "ithaca_logo.png" },
     "Rochester_NY":   { hex: "#FFD82B", logo: "rochester_logo.svg" },
     "Rensselaer":     { hex: "#EE3124", logo: "RPI_logo.svg" },
     "Springfield":    { hex: "#BBBBBB", logo: "springfield_logo.svg" },
