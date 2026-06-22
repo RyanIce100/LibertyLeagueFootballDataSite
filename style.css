@@ -347,28 +347,26 @@ body {
 }
 
 /* ============================================================
-   TABLE TOOLBAR
+   TABLE TOOLBAR – injected into Grid.js search row
    ============================================================ */
-.table-toolbar {
-    display: flex;
+.gridjs-search {
+    display: flex !important;
     align-items: center;
-    justify-content: space-between;
-    padding: 8px 14px;
-    background: white;
-    border-bottom: 1px solid #dde3ec;
-    flex-shrink: 0;
-    gap: 10px;
+    gap: 8px;
+    padding: 8px 12px !important;
+    flex-wrap: wrap;
+    background: #fff;
+    border-bottom: 1px solid #e0e4ea;
 }
-.toolbar-left {
+.gridjs-search-input {
+    flex-shrink: 0;
+}
+.gridjs-toolbar-controls {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-}
-.toolbar-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    margin-left: 4px;
 }
 .toolbar-label {
     display: flex;
@@ -464,11 +462,10 @@ button { cursor: pointer; font-family: inherit; }
 }
 .gridjs-resizable-handle { background: #cbd5e1; width: 3px; cursor: col-resize; }
 .gridjs-resizable-handle:hover { background: #1e466e; }
-.gridjs-search { padding: 8px 14px; }
 .gridjs-search input {
     padding: 6px 10px;
     border-radius: 6px;
     border: 1px solid #ccc;
     font-size: 13px;
-    width: 280px;
+    width: 220px;
 }

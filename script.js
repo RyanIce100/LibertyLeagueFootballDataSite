@@ -289,7 +289,7 @@ function renderTable(data, visibleColumns) {
         autoWidth: true,
         resizable: true,
         language: {
-            search: "🔍 Search all columns:",
+            search: "🔍 Search:",
             pagination: {
                 previous: "←",
                 next: "→",
@@ -300,6 +300,9 @@ function renderTable(data, visibleColumns) {
             }
         }
     }).render(container);
+
+    // Inject toolbar controls into Grid.js search bar
+    injectToolbar();
 }
 
 // --------------------------------------------------------------
@@ -1186,6 +1189,44 @@ function addComputedColumn() {
     refreshTableFromUI();
     nameInput.value = ""; formulaInput.value = ""; conditionInput.value = "";
     alert(`Added column "${name}" with values for ${count} rows.`);
+}
+
+// --------------------------------------------------------------
+// TOOLBAR INJECTION – move controls into Grid.js search row
+// --------------------------------------------------------------
+function injectToolbar() {
+    // Grid.js renders async; poll briefly until .gridjs-search appears
+    let attempts = 0;
+    const tryInject = () => {
+        const searchWrapper = document.querySelector('.gridjs-search');
+        if (!searchWrapper) {
+            if (++attempts < 30) setTimeout(tryInject, 50);
+            return;
+        }
+        // Remove any previously injected toolbar wrapper
+        const old = searchWrapper.querySelector('.gridjs-toolbar-controls');
+        if (old) old.remove();
+
+        const toolbar = document.getElementById('toolbarControls');
+        if (!toolbar) return;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'gridjs-toolbar-controls';
+
+        // Clone each child so the originals stay in the DOM (event listeners are on originals)
+        Array.from(toolbar.children).forEach(el => {
+            wrap.appendChild(el.cloneNode(true));
+        });
+
+        searchWrapper.appendChild(wrap);
+
+        // Wire cloned elements' events to originals' handlers by triggering on originals
+        wrap.querySelector('#groupByPlayerBtn')?.addEventListener('click', groupByPlayer);
+        wrap.querySelector('#resetDataBtn')?.addEventListener('click', resetToRaw);
+        wrap.querySelector('#exportCsvBtn')?.addEventListener('click', exportVisibleCSV);
+        wrap.querySelector('#pageSizeSelect')?.addEventListener('change', (e) => setPageSize(e.target.value));
+    };
+    setTimeout(tryInject, 50);
 }
 
 // --------------------------------------------------------------
