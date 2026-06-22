@@ -286,7 +286,6 @@ function renderTable(data, visibleColumns) {
         sort: true,
         pagination: pagination,
         fixedHeader: true,
-        height: "550px",
         autoWidth: true,
         resizable: true,
         language: {
@@ -594,9 +593,15 @@ function clearFilters() {
 
 function updateFilterStatus() {
     const status = document.getElementById('filterStatus');
+    const badge = document.getElementById('activeFilterBadge');
     const count = activeFilters.length;
-    if (count === 0) status.textContent = `Showing all ${currentData.length} rows.`;
-    else status.textContent = `Filtered by ${count} condition(s). Showing ${currentData.length} rows.`;
+    if (count === 0) {
+        status.textContent = `Showing all ${currentData.length} rows.`;
+        if (badge) { badge.style.display = 'none'; badge.textContent = ''; }
+    } else {
+        status.textContent = `${count} filter(s) active · ${currentData.length} rows`;
+        if (badge) { badge.style.display = 'inline'; badge.textContent = count; }
+    }
 }
 
 // --------------------------------------------------------------
@@ -673,8 +678,11 @@ function setPageSize(size) {
 // 9. CHART – full rewrite with all new features
 // --------------------------------------------------------------
 function toggleChartVisibility() {
-    const section = document.getElementById('chartSection');
-    section.style.display = section.style.display === 'none' ? 'block' : 'none';
+    const body = document.getElementById('chartSection');
+    const chevron = document.getElementById('chartChevron');
+    const isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : 'block';
+    if (chevron) chevron.classList.toggle("open", !isOpen);
 }
 
 function populateMetricSelect() {
@@ -742,6 +750,8 @@ function drawChartFromCurrentData() {
     canvas.height = sizes[chartSize] ?? 420;
 
     document.getElementById('chartSection').style.display = 'block';
+    const chevron = document.getElementById('chartChevron');
+    if (chevron) chevron.classList.add("open");
     const ctx = canvas.getContext("2d");
     if (chartInstance) chartInstance.destroy();
 
@@ -1184,16 +1194,27 @@ function addComputedColumn() {
 document.addEventListener("DOMContentLoaded", () => {
     loadData();
 
+    // Side panel toggle
+    document.getElementById("panelToggleBtn").addEventListener("click", () => {
+        document.getElementById("sidePanel").classList.toggle("collapsed");
+    });
+
+    // Chart collapsible
+    document.getElementById("chartToggleBtn").addEventListener("click", () => {
+        const body = document.getElementById("chartSection");
+        const chevron = document.getElementById("chartChevron");
+        const isOpen = body.style.display !== 'none';
+        body.style.display = isOpen ? 'none' : 'block';
+        chevron.classList.toggle("open", !isOpen);
+    });
+
     document.getElementById("groupByPlayerBtn").addEventListener("click", groupByPlayer);
     document.getElementById("resetDataBtn").addEventListener("click", resetToRaw);
     document.getElementById("exportCsvBtn").addEventListener("click", exportVisibleCSV);
-    document.getElementById("toggleChartBtn").addEventListener("click", toggleChartVisibility);
-    document.getElementById("closeChartBtn")?.addEventListener("click", () => {
-        document.getElementById('chartSection').style.display = 'none';
-    });
 
     document.getElementById("applyFiltersBtn").addEventListener("click", applyFilters);
     document.getElementById("clearFiltersBtn").addEventListener("click", clearFilters);
+    document.getElementById("addFilterRowBtn").addEventListener("click", () => addFilterRow());
     addFilterRow();
 
     document.getElementById("pageSizeSelect").addEventListener("change", (e) => setPageSize(e.target.value));

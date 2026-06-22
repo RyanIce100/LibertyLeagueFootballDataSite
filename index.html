@@ -5,140 +5,133 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Liberty League Football Database</title>
     <link rel="stylesheet" href="style.css" />
-    <!-- Grid.js CSS -->
     <link rel="stylesheet" href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" />
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <!-- Chart.js Annotation Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-    <!-- Chart.js DataLabels Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
-    <!-- PapaParse -->
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-    <!-- Grid.js JS -->
     <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
 </head>
 <body>
-    <div class="dashboard">
-        <h1>🏈 Liberty League Football Data</h1>
-        <p>6,000+ rows | 55 columns | Filter, sort, group, chart, and computed columns</p>
 
-        <!-- Global Actions -->
-        <div class="global-actions">
-            <button id="groupByPlayerBtn">👥 Group by Player (Sum Stats)</button>
-            <button id="resetDataBtn">🔄 Show Raw Data</button>
-            <button id="exportCsvBtn">📎 Export Visible Table as CSV</button>
-            <button id="toggleChartBtn">📊 Toggle Chart Panel</button>
+<div class="app-layout">
+
+    <!-- ===== SIDE PANEL ===== -->
+    <aside class="side-panel" id="sidePanel">
+        <div class="side-panel-inner">
+            <div class="side-section">
+                <div class="side-section-title">Columns</div>
+                <div id="categoryPanel" class="category-panel"></div>
+            </div>
+
+            <div class="side-section">
+                <div class="side-section-title">
+                    Filters
+                    <span id="activeFilterBadge" class="filter-badge" style="display:none"></span>
+                </div>
+                <div id="filterContainer"></div>
+                <div class="filter-actions">
+                    <button id="applyFiltersBtn" class="btn-sm">Apply</button>
+                    <button id="clearFiltersBtn" class="btn-sm btn-ghost">Clear</button>
+                    <button id="addFilterRowBtn" class="btn-sm btn-ghost">+ Add</button>
+                </div>
+                <div id="filterStatus" class="filter-status"></div>
+            </div>
+
+            <div class="side-section">
+                <div class="side-section-title">Computed Column</div>
+                <div class="comp-fields">
+                    <input id="compName" placeholder="Column name (e.g. YdsPerGame)" />
+                    <input id="compFormula" placeholder="Formula (e.g. Rush.Yds / GP)" />
+                    <input id="compCondition" placeholder="Condition (optional)" />
+                    <button id="addCompColBtn" class="btn-sm btn-green">Add Column</button>
+                </div>
+                <small class="hint">Use exact CSV column names in formula.</small>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <main class="main-content">
+
+        <!-- Header -->
+        <div class="top-header">
+            <div class="top-header-left">
+                <button class="panel-toggle" id="panelToggleBtn" title="Toggle side panel">☰</button>
+                <h1>🏈 Liberty League Football</h1>
+                <span class="subtitle">6,000+ rows · 55 columns</span>
+            </div>
         </div>
 
-        <!-- Category Column Toggles (collapsible) -->
-        <div id="categoryPanel" class="category-panel"></div>
-
-        <!-- Advanced Filter Bar -->
-        <div class="filter-section">
-            <h3>🔎 Advanced Filters</h3>
-            <div id="filterContainer"></div>
-            <div class="filter-actions">
-                <button id="applyFiltersBtn">Apply Filters</button>
-                <button id="clearFiltersBtn">Clear All Filters</button>
+        <!-- Chart Section (collapsible) -->
+        <div class="collapsible-block" id="chartBlock">
+            <button class="collapsible-header" id="chartToggleBtn">
+                <span>📊 Chart</span>
+                <span class="chevron" id="chartChevron">▼</span>
+            </button>
+            <div class="collapsible-body" id="chartSection" style="display:none;">
+                <div class="chart-controls">
+                    <select id="chartTypeSelect">
+                        <option value="bar">Bar Chart</option>
+                        <option value="line">Line Chart</option>
+                        <option value="scatter">Scatter Plot</option>
+                        <option value="radar">Radar Chart</option>
+                    </select>
+                    <select id="chartMetricSelect"><option value="">-- Y Axis --</option></select>
+                    <select id="chartMetricX" style="display:none;"><option value="">-- X Axis --</option></select>
+                    <input id="chartTitleInput" placeholder="Chart title" />
+                    <input id="chartAxisYInput" placeholder="Y label" />
+                    <input id="chartAxisXInput" placeholder="X label" />
+                </div>
+                <div class="chart-options">
+                    <label><input type="checkbox" id="colorByTeamCheck" /> Color by Team</label>
+                    <label><input type="checkbox" id="showLogosCheck" /> Team Logos</label>
+                    <label><input type="checkbox" id="showPointLabels" /> Point Labels</label>
+                    <label><input type="checkbox" id="showMeanY" /> Mean Y</label>
+                    <label id="meanXLabel"><input type="checkbox" id="showMeanX" /> Mean X</label>
+                    <label id="linRegLabel"><input type="checkbox" id="showLinReg" /> Lin. Reg.</label>
+                    <label>Size:
+                        <select id="chartSizeSelect">
+                            <option value="small">S</option>
+                            <option value="medium" selected>M</option>
+                            <option value="large">L</option>
+                        </select>
+                    </label>
+                    <button id="drawChartBtn" class="btn-sm">▶ Draw</button>
+                </div>
+                <div style="position:relative; margin-top:12px;">
+                    <canvas id="statsChart" style="max-width:100%; background:#f9f9f9;"></canvas>
+                </div>
             </div>
-            <div id="filterStatus" style="margin-top:6px; font-size:14px; color:#555;"></div>
         </div>
 
-        <!-- Computed Column Section -->
-        <div class="computed-section">
-            <h3>➕ Add Computed Column</h3>
-            <div class="comp-row">
-                <input id="compName" placeholder="New column name (e.g., YdsPerGame)" />
-                <input id="compFormula" placeholder="Formula (e.g., Rush.Yds / GP)" />
-                <input id="compCondition" placeholder="Condition (optional, e.g., Rush.Att >= 20)" />
-                <button id="addCompColBtn">Add Column</button>
-            </div>
-            <small style="color:#666;">Formula uses column names exactly as in the CSV. Condition is optional.</small>
-        </div>
-
-        <!-- Chart Section -->
-        <div class="chart-section" id="chartSection" style="display:none;">
-            <h3>📊 Chart</h3>
-
-            <!-- Row 1: Type + axes -->
-            <div class="chart-controls">
-                <select id="chartTypeSelect">
-                    <option value="bar">Bar Chart</option>
-                    <option value="line">Line Chart</option>
-                    <option value="scatter">Scatter Plot</option>
-                    <option value="radar">Radar Chart</option>
-                </select>
-                <select id="chartMetricSelect"><option value="">-- Y Axis stat --</option></select>
-                <select id="chartMetricX" style="display:none;"><option value="">-- X Axis stat --</option></select>
-            </div>
-
-            <!-- Row 2: Custom labels -->
-            <div class="chart-controls" style="flex-wrap:wrap; gap:8px; margin-top:8px;">
-                <input id="chartTitleInput"  placeholder="Chart title (optional)" style="flex:1 1 180px; padding:6px 10px; border-radius:6px; border:1px solid #ccc; font-size:14px;" />
-                <input id="chartAxisYInput"  placeholder="Y axis label (optional)" style="flex:1 1 160px; padding:6px 10px; border-radius:6px; border:1px solid #ccc; font-size:14px;" />
-                <input id="chartAxisXInput"  placeholder="X axis label (optional)" style="flex:1 1 160px; padding:6px 10px; border-radius:6px; border:1px solid #ccc; font-size:14px;" />
-            </div>
-
-            <!-- Row 3: Overlays + options -->
-            <div class="chart-controls" style="flex-wrap:wrap; gap:12px; margin-top:10px; align-items:center;">
-                <label class="chart-option-label">
-                    <input type="checkbox" id="colorByTeamCheck" /> Color by Team
-                </label>
-                <label class="chart-option-label">
-                    <input type="checkbox" id="showLogosCheck" /> Use Team Logos <span style="font-size:11px;color:#888;">(scatter + color by team)</span>
-                </label>
-                <label class="chart-option-label">
-                    <input type="checkbox" id="showPointLabels" /> Point Labels
-                </label>
-                <label class="chart-option-label">
-                    <input type="checkbox" id="showMeanY" /> Mean Y line
-                </label>
-                <label class="chart-option-label" id="meanXLabel">
-                    <input type="checkbox" id="showMeanX" /> Mean X line
-                </label>
-                <label class="chart-option-label" id="linRegLabel">
-                    <input type="checkbox" id="showLinReg" /> Linear Regression
-                </label>
-                <label class="chart-option-label">
-                    Size:
-                    <select id="chartSizeSelect" style="padding:4px 8px; border-radius:6px; border:1px solid #ccc;">
-                        <option value="small">Small</option>
-                        <option value="medium" selected>Medium</option>
-                        <option value="large">Large</option>
+        <!-- Table toolbar -->
+        <div class="table-toolbar">
+            <div class="toolbar-left">
+                <button id="groupByPlayerBtn" class="btn-sm">👥 Group by Player</button>
+                <button id="resetDataBtn" class="btn-sm btn-ghost">🔄 Raw Data</button>
+                <label class="toolbar-label">Rows:
+                    <select id="pageSizeSelect">
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                        <option value="-1">All</option>
                     </select>
                 </label>
             </div>
-
-            <!-- Row 4: Action buttons -->
-            <div class="chart-controls" style="margin-top:10px;">
-                <button id="drawChartBtn">▶ Draw Chart</button>
-                <button id="closeChartBtn" class="danger">✕ Close</button>
-            </div>
-
-            <div style="position:relative;">
-                <canvas id="statsChart" style="max-width:100%; background:#f9f9f9;"></canvas>
+            <div class="toolbar-right">
+                <button id="exportCsvBtn" class="btn-sm btn-ghost">📎 Export CSV</button>
             </div>
         </div>
 
-        <!-- Pagination Size Selector -->
-        <div class="pagination-controls">
-            <label>Rows per page: 
-                <select id="pageSizeSelect">
-                    <option value="25">25</option>
-                    <option value="50" selected>50</option>
-                    <option value="100">100</option>
-                    <option value="-1">All</option>
-                </select>
-            </label>
-        </div>
-
-        <!-- Table Wrapper -->
-        <div id="tableWrapper" style="overflow-x: auto;">
+        <!-- Table -->
+        <div id="tableWrapper">
             <div id="table-container"></div>
         </div>
-    </div>
 
-    <script src="script.js"></script>
+    </main>
+</div>
+
+<script src="script.js"></script>
 </body>
 </html>
