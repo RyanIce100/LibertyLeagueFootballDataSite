@@ -615,14 +615,16 @@ function groupByPlayer() {
     const playerMap = new Map();
     fullRawData.forEach(row => {
         const name = row.Player;
+        const team = row.Team || '';
         if (!name) return;
-        if (!playerMap.has(name)) {
-            playerMap.set(name, { ...row });
+        const key = `${name}|${team}`;
+        if (!playerMap.has(key)) {
+            playerMap.set(key, { ...row });
         } else {
-            const existing = playerMap.get(name);
-            for (let [key, value] of Object.entries(row)) {
-                if (typeof value === "number" && key !== "Yr" && key !== "Season") {
-                    existing[key] = (existing[key] || 0) + value;
+            const existing = playerMap.get(key);
+            for (let [k, value] of Object.entries(row)) {
+                if (typeof value === "number" && k !== "Yr" && k !== "Season") {
+                    existing[k] = (existing[k] || 0) + value;
                 }
             }
         }
@@ -633,7 +635,6 @@ function groupByPlayer() {
     currentData = filteredData;
     renderTable(currentData);
     populateMetricSelect();
-    alert(`Grouped into ${groupedData.length} unique players.`);
 }
 
 function resetToRaw() {
@@ -644,6 +645,9 @@ function resetToRaw() {
     currentData = filteredData;
     renderTable(currentData);
     populateMetricSelect();
+    // Uncheck the group checkbox if present
+    const cb = document.getElementById('groupByCheckbox');
+    if (cb) cb.checked = false;
 }
 
 function exportVisibleCSV() {
@@ -1195,7 +1199,6 @@ function addComputedColumn() {
 // TOOLBAR INJECTION – move controls into Grid.js search row
 // --------------------------------------------------------------
 function injectToolbar() {
-    // Grid.js renders async; poll briefly until .gridjs-search appears
     let attempts = 0;
     const tryInject = () => {
         const searchWrapper = document.querySelector('.gridjs-search');
@@ -1203,28 +1206,65 @@ function injectToolbar() {
             if (++attempts < 30) setTimeout(tryInject, 50);
             return;
         }
-        // Remove any previously injected toolbar wrapper
-        const old = searchWrapper.querySelector('.gridjs-toolbar-controls');
-        if (old) old.remove();
+        // Remove previously injected wrappers
+        searchWrapper.querySelectorAll('.gridjs-toolbar-left, .gridjs-toolbar-right').forEach(el => el.remove());
 
-        const toolbar = document.getElementById('toolbarControls');
-        if (!toolbar) return;
+        // Make the search wrapper a flex row
+        searchWrapper.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 12px; flex-wrap:wrap; background:#fff; border-bottom:1px solid #e0e4ea;';
 
-        const wrap = document.createElement('div');
-        wrap.className = 'gridjs-toolbar-controls';
+        // --- LEFT controls ---
+        const left = document.createElement('div');
+        left.className = 'gridjs-toolbar-left';
+        left.style.cssText = 'display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1;';
 
-        // Clone each child so the originals stay in the DOM (event listeners are on originals)
-        Array.from(toolbar.children).forEach(el => {
-            wrap.appendChild(el.cloneNode(true));
+        // Group by checkbox
+        const groupLabel = document.createElement('label');
+        groupLabel.style.cssText = 'display:inline-flex; align-items:center; gap:5px; font-size:13px; font-weight:600; color:#1e466e; cursor:pointer; white-space:nowrap; user-select:none;';
+        const groupCb = document.createElement('input');
+        groupCb.type = 'checkbox';
+        groupCb.id = 'groupByCheckbox';
+        groupCb.checked = isGrouped;
+        groupCb.style.cssText = 'width:15px; height:15px; accent-color:#1e466e; cursor:pointer;';
+        groupCb.addEventListener('change', () => {
+            if (groupCb.checked) groupByPlayer(); else resetToRaw();
         });
+        groupLabel.appendChild(groupCb);
+        groupLabel.appendChild(document.createTextNode('Group by Player & Team'));
 
-        searchWrapper.appendChild(wrap);
+        // Rows per page
+        const rowsLabel = document.createElement('label');
+        rowsLabel.style.cssText = 'display:inline-flex; align-items:center; gap:5px; font-size:13px; color:#555; font-weight:500; white-space:nowrap;';
+        rowsLabel.appendChild(document.createTextNode('Rows:'));
+        const rowsSel = document.createElement('select');
+        rowsSel.style.cssText = 'padding:4px 8px; border-radius:5px; border:1px solid #ccc; font-size:13px;';
+        [['25','25'],['50','50'],['100','100'],['-1','All']].forEach(([v, t]) => {
+            const o = document.createElement('option');
+            o.value = v; o.textContent = t;
+            if (v === String(currentPageSize)) o.selected = true;
+            rowsSel.appendChild(o);
+        });
+        rowsSel.addEventListener('change', (e) => setPageSize(e.target.value));
+        rowsLabel.appendChild(rowsSel);
 
-        // Wire cloned elements' events to originals' handlers by triggering on originals
-        wrap.querySelector('#groupByPlayerBtn')?.addEventListener('click', groupByPlayer);
-        wrap.querySelector('#resetDataBtn')?.addEventListener('click', resetToRaw);
-        wrap.querySelector('#exportCsvBtn')?.addEventListener('click', exportVisibleCSV);
-        wrap.querySelector('#pageSizeSelect')?.addEventListener('change', (e) => setPageSize(e.target.value));
+        left.appendChild(groupLabel);
+        left.appendChild(rowsLabel);
+
+        // --- RIGHT controls ---
+        const right = document.createElement('div');
+        right.className = 'gridjs-toolbar-right';
+        right.style.cssText = 'display:flex; align-items:center; gap:8px; margin-left:auto;';
+
+        const exportBtn = document.createElement('button');
+        exportBtn.textContent = '📎 Export CSV';
+        exportBtn.style.cssText = 'background:transparent; color:#1e466e; border:1px solid #b0c4d8; padding:5px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;';
+        exportBtn.addEventListener('click', exportVisibleCSV);
+        exportBtn.addEventListener('mouseenter', () => { exportBtn.style.background = '#eef2f7'; });
+        exportBtn.addEventListener('mouseleave', () => { exportBtn.style.background = 'transparent'; });
+
+        right.appendChild(exportBtn);
+
+        searchWrapper.appendChild(left);
+        searchWrapper.appendChild(right);
     };
     setTimeout(tryInject, 50);
 }
@@ -1249,16 +1289,10 @@ document.addEventListener("DOMContentLoaded", () => {
         chevron.classList.toggle("open", !isOpen);
     });
 
-    document.getElementById("groupByPlayerBtn").addEventListener("click", groupByPlayer);
-    document.getElementById("resetDataBtn").addEventListener("click", resetToRaw);
-    document.getElementById("exportCsvBtn").addEventListener("click", exportVisibleCSV);
-
     document.getElementById("applyFiltersBtn").addEventListener("click", applyFilters);
     document.getElementById("clearFiltersBtn").addEventListener("click", clearFilters);
     document.getElementById("addFilterRowBtn").addEventListener("click", () => addFilterRow());
     addFilterRow();
-
-    document.getElementById("pageSizeSelect").addEventListener("change", (e) => setPageSize(e.target.value));
 
     document.getElementById("chartTypeSelect").addEventListener("change", (e) => {
         const isScatter = e.target.value === 'scatter';
