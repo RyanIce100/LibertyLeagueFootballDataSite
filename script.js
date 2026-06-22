@@ -34,17 +34,17 @@ let sortState = {}; // { colName: 'asc' | 'desc' | 'none' }
 
 // Team color + logo data keyed by CSV team name
 const TEAM_DATA = {
-    "Buffalo_St":     { hex: "#D25F15", logo: "buffst_logo.svg" },
-    "Hilbert":        { hex: "#233F94", logo: "hilbert_logo.svg" },
-    "Hobart":         { hex: "#3C0C5C", logo: "hobart_logo.svg" },
-    "Ithaca":         { hex: "#013158", logo: "ithaca_logo.png" },
-    "Rochester_NY":   { hex: "#FFD82B", logo: "rochester_logo.svg" },
-    "Rensselaer":     { hex: "#EE3124", logo: "RPI_logo.svg" },
-    "Springfield":    { hex: "#BBBBBB", logo: "springfield_logo.svg" },
-    "Union_NY":       { hex: "#822433", logo: "union_logo.svg" },
-    "Merchant_Marine":{ hex: "#093A88", logo: "USMMA_logo.png" },
-    "WPI":            { hex: "#AC2B37", logo: "wpi_logo.svg" },
-    "St_Lawrence":    { hex: "#5B2F18", logo: "slu_logo.svg" },
+    "Buffalo_St":     { hex: "#D25F15", logo: "images/buffst_logo.svg" },
+    "Hilbert":        { hex: "#233F94", logo: "images/hilbert_logo.svg" },
+    "Hobart":         { hex: "#3C0C5C", logo: "images/hobart_logo.svg" },
+    "Ithaca":         { hex: "#013158", logo: "images/ithaca_logo.png" },
+    "Rochester_NY":   { hex: "#FFD82B", logo: "images/rochester_logo.svg" },
+    "Rensselaer":     { hex: "#EE3124", logo: "images/RPI_logo.svg" },
+    "Springfield":    { hex: "#BBBBBB", logo: "images/springfield_logo.svg" },
+    "Union_NY":       { hex: "#822433", logo: "images/union_logo.svg" },
+    "Merchant_Marine":{ hex: "#093A88", logo: "images/USMMA_logo.png" },
+    "WPI":            { hex: "#AC2B37", logo: "images/wpi_logo.svg" },
+    "St_Lawrence":    { hex: "#5B2F18", logo: "images/slu_logo.svg" },
 };
 
 // Pre-load logo images for chart use
@@ -1260,7 +1260,7 @@ function injectToolbar() {
         exportBtn.addEventListener('click', exportVisibleCSV);
         exportBtn.addEventListener('mouseenter', () => { exportBtn.style.background = '#eef2f7'; });
         exportBtn.addEventListener('mouseleave', () => { exportBtn.style.background = 'transparent'; });
-
+        exportBtn.style.marginLeft = 'auto' ;
         right.appendChild(exportBtn);
 
         searchWrapper.appendChild(left);
