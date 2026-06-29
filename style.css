@@ -487,3 +487,18 @@ button { cursor: pointer; font-family: inherit; }
     object-fit: contain;
     display: block;
 }
+
+/* ============================================================
+   GRID.JS HEADER OVERRIDES (Prevent "...")
+   ============================================================ */
+.gridjs-th .gridjs-th-content {
+    /* Allow the text to wrap to the next line if it gets tight */
+    white-space: normal !important;
+    /* Remove the '...' truncation */
+    text-overflow: clip !important;
+    overflow: visible !important;
+    /* Ensure it aligns properly with the sort arrow */
+    display: inline-block;
+    vertical-align: middle;
+    width: 100%;
+}
