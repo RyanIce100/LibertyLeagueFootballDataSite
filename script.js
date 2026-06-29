@@ -237,6 +237,11 @@ function renderTable(data, visibleColumns) {
         });
     });
 
+    // Measure header text width using a temporary canvas
+    const _measureCtx = document.createElement('canvas').getContext('2d');
+    _measureCtx.font = '600 13px system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+    const WIDE_COLS = new Set(['Player', 'Team', 'Yr']);
+
     // Build column defs with consistent numeric comparator
     const columnDefs = visibleColumns.map((col, idx) => {
         // Determine if column is mostly numeric
@@ -245,8 +250,14 @@ function renderTable(data, visibleColumns) {
         sample.forEach(r => { if (typeof r[idx] === 'number') numericCount++; });
         const isNumeric = numericCount > sample.length * 0.5;
 
+        // Auto-size: wide cols get no constraint; others get min-width = header text + padding
+        const minWidth = WIDE_COLS.has(col)
+            ? undefined
+            : Math.ceil(_measureCtx.measureText(col).width) + 24; // 24px padding
+
         return {
             name: col,
+            width: minWidth ? minWidth + 'px' : undefined,
             sort: {
                 compare: (a, b) => {
                     // Handle empty strings
@@ -866,6 +877,19 @@ function drawChartFromCurrentData() {
 
     let config;
 
+    // Plugin: white background so downloads aren't transparent/black
+    const whiteBgPlugin = {
+        id: 'whiteBg',
+        beforeDraw(chart) {
+            const ctx2 = chart.ctx;
+            ctx2.save();
+            ctx2.globalCompositeOperation = 'destination-over';
+            ctx2.fillStyle = '#ffffff';
+            ctx2.fillRect(0, 0, chart.width, chart.height);
+            ctx2.restore();
+        }
+    };
+
     // Custom plugin: draw team logo images on scatter points
     const logoPointPlugin = {
         id: 'logoPoints',
@@ -963,7 +987,7 @@ function drawChartFromCurrentData() {
                     y: { beginAtZero: false, title: { display: true, text: yAxisLabel, font: { size: 13 } } }
                 }
             },
-            plugins: [ChartDataLabels, logoPointPlugin]
+            plugins: [ChartDataLabels, logoPointPlugin, whiteBgPlugin]
         };
 
     } else if (chartType === 'radar') {
@@ -988,7 +1012,7 @@ function drawChartFromCurrentData() {
                 },
                 scales: { r: { beginAtZero: true } }
             },
-            plugins: [ChartDataLabels]
+            plugins: [ChartDataLabels, whiteBgPlugin]
         };
 
     } else {
@@ -1022,7 +1046,7 @@ function drawChartFromCurrentData() {
                     x: { title: { display: true, text: xAxisLabel, font: { size: 13 } }, ticks: { autoSkip: true, maxTicksLimit: 30 } }
                 }
             },
-            plugins: [ChartDataLabels]
+            plugins: [ChartDataLabels, whiteBgPlugin]
         };
     }
 
