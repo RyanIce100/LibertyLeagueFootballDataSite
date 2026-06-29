@@ -441,7 +441,7 @@ button { cursor: pointer; font-family: inherit; }
 #table-container { width: 100%; }
 
 .gridjs-table {
-    width: auto !important;
+    width: max-content !important;
     min-width: 100%;
     table-layout: auto !important;
     border-collapse: collapse;
@@ -468,4 +468,20 @@ button { cursor: pointer; font-family: inherit; }
     border: 1px solid #ccc;
     font-size: 13px;
     width: 220px;
+}
+
+/* ============================================================
+   LOGO
+   ============================================================ */
+.top-header-right {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    padding-left: 16px;
+}
+.ll-logo {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
+    display: block;
 }

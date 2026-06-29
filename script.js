@@ -751,10 +751,13 @@ function drawChartFromCurrentData() {
         finalPoints = [...points].sort((a,b) => b.y - a.y).slice(0, 10);
     }
 
-    // Resize canvas
+    // Resize canvas container so Chart.js (maintainAspectRatio:false) picks up the height
     const canvas = document.getElementById("statsChart");
     const sizes = { small: 280, medium: 420, large: 580 };
-    canvas.height = sizes[chartSize] ?? 420;
+    const targetH = sizes[chartSize] ?? 420;
+    canvas.style.height = targetH + 'px';
+    canvas.style.width = '100%';
+    canvas.parentElement.style.height = targetH + 'px';
 
     document.getElementById('chartSection').style.display = 'block';
     const chevron = document.getElementById('chartChevron');
@@ -814,6 +817,15 @@ function drawChartFromCurrentData() {
                 const intercept = (sumY - slope*sumX)/n;
                 const minX = Math.min(...xs);
                 const maxX = Math.max(...xs);
+                // Compute r and r²
+                const meanX = sumX/n;
+                const meanY = sumY/n;
+                const ssXY = sumXY - n*meanX*meanY;
+                const ssX  = sumX2 - n*meanX*meanX;
+                const ssY  = ys.reduce((a,y)=>a+(y-meanY)**2,0);
+                const r    = (ssX !== 0 && ssY !== 0) ? ssXY / Math.sqrt(ssX * ssY) : 0;
+                const r2   = r * r;
+                const interceptStr = intercept >= 0 ? `+ ${intercept.toFixed(2)}` : `- ${Math.abs(intercept).toFixed(2)}`;
                 annotations['linRegLine'] = {
                     type: 'line',
                     xMin: minX, xMax: maxX,
@@ -822,7 +834,7 @@ function drawChartFromCurrentData() {
                     borderWidth: 2.5,
                     label: {
                         display: true,
-                        content: `y = ${slope.toFixed(3)}x + ${intercept.toFixed(2)}`,
+                        content: [`y = ${slope.toFixed(3)}x ${interceptStr}`, `r = ${r.toFixed(3)},  r² = ${r2.toFixed(3)}`],
                         position: 'center',
                         backgroundColor: 'rgba(150,50,200,0.8)',
                         color: '#fff',
