@@ -250,10 +250,10 @@ function renderTable(data, visibleColumns) {
         sample.forEach(r => { if (typeof r[idx] === 'number') numericCount++; });
         const isNumeric = numericCount > sample.length * 0.5;
 
-        // Auto-size: wide cols get no constraint; others get min-width = header text + padding
+        // Auto-size: wide cols get no constraint; others get min-width = header text + padding + sort icon
         const minWidth = WIDE_COLS.has(col)
             ? undefined
-            : Math.ceil(_measureCtx.measureText(col).width) + 24; // 24px padding
+            : Math.ceil(_measureCtx.measureText(col).width) + 48; // 48px gives plenty of room for the sort arrow
 
         return {
             name: col,
